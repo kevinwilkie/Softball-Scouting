@@ -1202,16 +1202,96 @@ function dots(n, total, fillClass) {
   return row;
 }
 
+// Runs auto-tallied from logged at-bats (by batting side).
+function autoRuns(g) {
+  const r = { me: 0, opp: 0 };
+  (g.pitches || []).forEach(pt => { if (pt.runs) r[pt.battingSide === 'me' ? 'me' : 'opp'] += pt.runs; });
+  return r;
+}
+
+// Displayed score = runs auto-scored on logged at-bats + manual adjustments.
 function gameScore(g) {
   const s = g.score || { me: 0, opp: 0 };
-  return { me: s.me || 0, opp: s.opp || 0 };
+  const a = autoRuns(g);
+  return { me: a.me + (s.me || 0), opp: a.opp + (s.opp || 0) };
 }
 
 function adjustScore(g, side, delta) {
   if (!g.score) g.score = { me: 0, opp: 0 };
-  g.score[side] = Math.max(0, (g.score[side] || 0) + delta);
+  // Don't let the manual offset push the displayed total below 0.
+  if (delta < 0 && gameScore(g)[side] <= 0) return;
+  g.score[side] = (g.score[side] || 0) + delta;
   save();
   render();
+}
+
+/* ---- automatic baserunner advancement ---- */
+
+// Mutates g.bases ([1B,2B,3B] booleans) for an at-bat outcome and returns the
+// number of runs that scored. `kind`: walk | hit1 | hit2 | hit3 | hr | out | kout.
+// runsChosen (optional) sets how many crossed for hits/outs; otherwise the
+// forced minimum is used.
+function advanceRunners(g, kind, runsChosen) {
+  const b = (g.bases || [false, false, false]).map(Boolean); // [1B,2B,3B]
+  const occ = []; // occupied bases, closest-to-home first
+  if (b[2]) occ.push(3);
+  if (b[1]) occ.push(2);
+  if (b[0]) occ.push(1);
+
+  if (kind === 'kout') return 0;            // strikeout: no movement
+  if (kind === 'hr') { g.bases = [false, false, false]; return occ.length + 1; }
+  if (kind === 'walk') {                    // walk / HBP: force only
+    let [b1, b2, b3] = b;
+    let scored = 0;
+    if (b1 && b2 && b3) scored = 1;         // bases loaded, forced run
+    else if (b1 && b2) b3 = true;
+    else if (b1) b2 = true;
+    b1 = true;
+    g.bases = [b1, b2, b3];
+    return scored;
+  }
+
+  const shift = kind === 'hit1' ? 1 : kind === 'hit2' ? 2 : kind === 'hit3' ? 3 : 0; // out=0
+  const forced = occ.filter(p => p + shift >= 4).length;
+  const runs = runsChosen == null ? forced : Math.max(forced, Math.min(runsChosen, occ.length));
+  const remaining = occ.slice(runs); // lead `runs` runners score; rest stay
+  const nb = [false, false, false];
+  remaining.map(p => Math.min(p + shift, 3)).sort((a, c) => c - a).forEach(t => {
+    let pos = t; while (pos >= 1 && nb[pos - 1]) pos--; if (pos >= 1) nb[pos - 1] = true;
+  });
+  if (kind === 'hit1' || kind === 'hit2' || kind === 'hit3') {
+    let pos = shift; while (pos >= 1 && nb[pos - 1]) pos--; if (pos >= 1) nb[pos - 1] = true;
+  }
+  g.bases = nb;
+  return runs;
+}
+
+// What an at-bat-ending result implies for the runs prompt. Only prompts when
+// a runner is in scoring position (2B/3B) and the count is genuinely variable;
+// otherwise applies a sensible default automatically.
+function atBatRunsInfo(g, resultId) {
+  const bases = g.bases || [false, false, false];
+  const occ = []; if (bases[2]) occ.push(3); if (bases[1]) occ.push(2); if (bases[0]) occ.push(1);
+  const onBase = occ.length;
+  const hasScoringPos = !!(bases[1] || bases[2]);
+  const none = { needsPrompt: false, autoRuns: null, min: 0, max: 0, smart: 0, onBase };
+
+  if (resultId === 'ball' || resultId === 'called_strike' || resultId === 'swing_strike'
+      || resultId === 'foul' || resultId === 'hr' || resultId === 'hbp') return none;
+
+  const shiftMap = { single: 1, hit: 1, double: 2, triple: 3, in_play_out: 0 };
+  if (!(resultId in shiftMap)) return none;
+  const shift = shiftMap[resultId];
+  const forced = occ.filter(p => p + shift >= 4).length;
+  const max = occ.length;
+  // Smart default: doubles/triples plate everyone; singles plate runners from
+  // 2B/3B; outs plate nobody (the user can flag a sac fly via the prompt).
+  let smart = (resultId === 'double' || resultId === 'triple') ? max
+    : resultId === 'in_play_out' ? 0
+    : occ.filter(p => p >= 2).length;
+  smart = Math.max(forced, Math.min(smart, max));
+  const needsPrompt = hasScoringPos && max > forced;
+  return { needsPrompt, autoRuns: smart, min: forced, max, smart, onBase };
 }
 
 function scoreStrip(g) {
@@ -1224,10 +1304,13 @@ function scoreStrip(g) {
       el('button', { class: 'score-btn', onclick: () => adjustScore(g, side, 1) }, '+')
     ])
   ]);
-  return el('div', { class: 'sb-score' }, [
-    teamCell('me', 'CHS'),
-    el('div', { class: 'score-vs', text: '–' }),
-    teamCell('opp', (gameOpponentName(g) || 'OPP').slice(0, 10).toUpperCase())
+  return el('div', {}, [
+    el('div', { class: 'sb-score' }, [
+      teamCell('me', 'CHS'),
+      el('div', { class: 'score-vs', text: '–' }),
+      teamCell('opp', (gameOpponentName(g) || 'OPP').slice(0, 10).toUpperCase())
+    ]),
+    el('div', { class: 'score-hint', text: 'Runs auto-tally from at-bats · ± to adjust' })
   ]);
 }
 
@@ -1381,6 +1464,31 @@ function openPitchEntry(g, zoneId, zoneKind) {
 }
 
 function commitPitch(g, zoneId, pitchType, resultId) {
+  const info = atBatRunsInfo(g, resultId);
+  if (info.needsPrompt) {
+    openRunsPicker(g, resultId, info, runs => finalizePitch(g, zoneId, pitchType, resultId, runs));
+  } else {
+    finalizePitch(g, zoneId, pitchType, resultId, info.autoRuns);
+  }
+}
+
+// Quick "how many scored?" prompt for ambiguous at-bats (e.g. single with a
+// runner on second). Pre-selects the forced minimum.
+function openRunsPicker(g, resultId, info, onPick) {
+  const chips = [];
+  for (let r = info.min; r <= info.max; r++) chips.push(r);
+  openModal(el('div', {}, [
+    el('div', { class: 'sheet-handle' }),
+    el('h3', { text: `${RESULT_LABEL[resultId]} — runs scored?` }),
+    el('p', { class: 'sheet-sub', text: `${info.onBase} runner${info.onBase === 1 ? '' : 's'} on base. How many crossed the plate?` }),
+    el('div', { class: 'opt-grid cols-3' }, chips.map(r =>
+      el('div', { class: 'opt' + (r === info.smart ? ' tone-strike' : ''), onclick: () => onPick(r) },
+        r === 0 ? 'None' : `${r} run${r > 1 ? 's' : ''}`))),
+    el('button', { class: 'btn btn-block', style: { marginTop: '14px' }, onclick: closeModal }, 'Cancel')
+  ]));
+}
+
+function finalizePitch(g, zoneId, pitchType, resultId, runsChosen) {
   const cb = currentBatter(g);
   const pitch = {
     id: uid(),
@@ -1397,20 +1505,24 @@ function commitPitch(g, zoneId, pitchType, resultId) {
     battingSide: g.battingSide || 'me',
     batterId: cb ? cb.player.id : null,
     batterName: cb ? cb.player.name : null,
+    runsChosen: (runsChosen == null ? null : runsChosen),
     ts: Date.now()
   };
   g.pitches.push(pitch);
-  applyCount(g, resultId, pitch.battingSide);
+  pitch.runs = applyCount(g, resultId, pitch.battingSide, runsChosen);
   save();
   closeModal();
   render();
-  toast(`${pitchType} · ${RESULT_LABEL[resultId]}${cb ? ' · ' + cb.player.name : ''}`);
+  const runTxt = pitch.runs ? ` · ${pitch.runs} run${pitch.runs > 1 ? 's' : ''}` : '';
+  toast(`${pitchType} · ${RESULT_LABEL[resultId]}${cb ? ' · ' + cb.player.name : ''}${runTxt}`);
 }
 
-// Advance balls/strikes/outs/innings based on the result. `side` is the lineup
-// that was batting, so the right batting order advances when the at-bat ends.
-function applyCount(g, resultId, side) {
+// Advance count/outs/innings AND baserunners for the result. Returns the
+// number of runs that scored on the play. `side` is the batting lineup;
+// `runsChosen` (optional) sets runs for ambiguous hits/outs.
+function applyCount(g, resultId, side, runsChosen) {
   side = side || g.battingSide || 'me';
+  let runs = 0;
   const advanceOrder = () => {
     const len = lineupFor(g, side).length;
     if (!len) return;
@@ -1431,28 +1543,27 @@ function applyCount(g, resultId, side) {
   switch (resultId) {
     case 'ball':
       g.balls += 1;
-      if (g.balls >= 4) endAtBat(); // walk
+      if (g.balls >= 4) { runs = advanceRunners(g, 'walk'); endAtBat(); } // walk
       break;
     case 'called_strike':
     case 'swing_strike':
       g.strikes += 1;
-      if (g.strikes >= 3) { recordOut(); endAtBat(); } // strikeout
+      if (g.strikes >= 3) { recordOut(); endAtBat(); } // strikeout (no advance)
       break;
     case 'foul':
       if (g.strikes < 2) g.strikes += 1;
       break;
     case 'in_play_out':
+      runs = advanceRunners(g, 'out', runsChosen);
       recordOut(); endAtBat();
       break;
-    case 'single':
-    case 'double':
-    case 'triple':
-    case 'hr':
-    case 'hit':
-    case 'hbp':
-      endAtBat();
-      break;
+    case 'single': case 'hit': runs = advanceRunners(g, 'hit1', runsChosen); endAtBat(); break;
+    case 'double': runs = advanceRunners(g, 'hit2', runsChosen); endAtBat(); break;
+    case 'triple': runs = advanceRunners(g, 'hit3', runsChosen); endAtBat(); break;
+    case 'hr':     runs = advanceRunners(g, 'hr'); endAtBat(); break;
+    case 'hbp':    runs = advanceRunners(g, 'walk'); endAtBat(); break;
   }
+  return runs;
 }
 
 function pitchLog(g) {
@@ -1498,7 +1609,8 @@ function recomputeGame(g) {
     pt.inning = g.inning; pt.half = g.half; pt.balls = g.balls;
     pt.strikes = g.strikes; pt.outs = g.outs; pt.batterNo = g.batterNo;
     g.pitches.push(pt);
-    applyCount(g, pt.result, pt.battingSide || 'me');
+    // Re-derive runs/baserunners from the stored runsChosen so undo stays exact.
+    pt.runs = applyCount(g, pt.result, pt.battingSide || 'me', pt.runsChosen);
   });
 }
 

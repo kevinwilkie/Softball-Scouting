@@ -70,8 +70,12 @@ Start a game by choosing the **scouting pitcher** and the **opponent** (picking
 a pitcher that's linked to a team auto-selects that opponent). Then track the
 game pitch-by-pitch:
 - A **scoreboard** styled like a broadcast overlay — the running **score**
-  (CHS vs opponent, with +/− buttons to keep it up to date), balls, strikes,
-  outs, inning, current batter, and tappable bases.
+  (CHS vs opponent), balls, strikes, outs, inning, current batter, and the
+  bases. **Baserunners advance automatically** as you log at-bats (hits, walks,
+  outs), and the **score auto-tallies** the runs that cross the plate. When a
+  play is ambiguous (e.g. a single with a runner on second), a quick **"runs
+  scored?"** prompt lets you say how many came around. You can still tap a base
+  to fix a runner, or use the **± buttons** to adjust the score by hand.
 - A **Lineups** panel where you set both batting orders — your hitters and the
   opponent's — by tapping players to add them in order (tap a slot to remove).
 - The scoreboard then shows the **current batter by name** (number, slot, and
