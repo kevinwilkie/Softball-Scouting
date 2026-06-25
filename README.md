@@ -50,10 +50,34 @@ python3 -m http.server 8000
 # then open http://localhost:8000 on your phone or laptop
 ```
 
-Or deploy the folder to **GitHub Pages** (Settings → Pages → deploy from this
-branch) and open the URL on your phone. On iОS/Android tap "Add to Home Screen"
-to use it like a native app — it caches offline so it works in the stands with
-no signal.
+## Deploying to GitHub Pages (automated)
+
+This repo ships a GitHub Actions workflow
+(`.github/workflows/deploy-pages.yml`) that publishes the app to GitHub Pages
+automatically on every push. **One-time setup:**
+
+1. On GitHub, open the repository → **Settings** → **Pages**.
+2. Under **Build and deployment → Source**, choose **GitHub Actions**.
+3. Push (or re-run the workflow) — the included workflow runs on pushes to
+   `main`/`master` and to the `claude/softball-pitcher-scout-app-pnr73x`
+   development branch, and can also be started manually from the **Actions**
+   tab via **Run workflow**.
+4. When the **Deploy to GitHub Pages** workflow finishes, your app is live at:
+
+   ```
+   https://<your-username>.github.io/<repository-name>/
+   ```
+
+   The exact URL is also shown in **Settings → Pages** and in the workflow
+   run's **deploy** step summary.
+
+> Note: GitHub may restrict Pages deployment to the repository's **default
+> branch**. If the workflow is skipped or blocked when run from the
+> development branch, merge this branch into `main` (or set it as the default
+> branch) and the deploy will run.
+
+On iOS/Android, open that URL and tap **"Add to Home Screen"** to use it like a
+native app — it caches offline so it works in the stands with no signal.
 
 ## Data & privacy
 
