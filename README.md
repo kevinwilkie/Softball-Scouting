@@ -7,20 +7,39 @@ and there's nothing to install or sign into.
 
 ## Features
 
-### Roster tab
+### Pitchers tab
 Build a roster of pitchers you want to scout. For each pitcher you can record:
 - **Name**
 - **Classification** — Freshman / Sophomore / Junior / Senior
 - **Handedness** — right- or left-handed
+- **Team / Opponent** — optionally link the pitcher to an opponent team
 - **Pitch types** — Fastball, Changeup, Curveball, Riseball, Dropball,
   Screwball, Drop Curve, Knuckle (multi-select)
 
 Add, edit, and delete pitchers.
 
+### My Team tab
+Carrollton's hitters. For each: name, jersey number, bats (R / L / Switch),
+and position. This is the pool you draw your batting order from at game time.
+
+### Opponents tab
+Opponent teams, each with its own roster. Open a team to add players (name,
+number, bats, position, and a "Pitcher" flag). The opponent's roster is the
+pool for *their* batting order during a game.
+
 ### Log Game tab
-Track a live game pitch-by-pitch:
+Start a game by choosing the **scouting pitcher** and the **opponent** (picking
+a pitcher that's linked to a team auto-selects that opponent). Then track the
+game pitch-by-pitch:
 - A **scoreboard** styled like a broadcast overlay — balls, strikes, outs,
   inning, current batter, and tappable bases.
+- A **Lineups** panel where you set both batting orders — your hitters and the
+  opponent's — by tapping players to add them in order (tap a slot to remove).
+- The scoreboard then shows the **current batter by name** (number, slot, and
+  handedness), and advances through the order automatically as at-bats end. A
+  **Batting: Us / Them** toggle switches which lineup is at the plate, and the
+  batter's handedness auto-fills the R/L split used in stats. (Switch hitters
+  keep a manual R/L choice; a "Next ›" button nudges the order for subs.)
 - A **tappable strike zone** (the inner 3×3 squares are the strike zone, the
   outer ring is out-of-zone, just like the screenshot). Tap the spot where the
   pitch crossed the plate.
