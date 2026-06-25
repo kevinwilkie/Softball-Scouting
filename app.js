@@ -15,6 +15,13 @@ const PITCH_TYPES = [
   'Dropball', 'Screwball', 'Drop Curve', 'Knuckle'
 ];
 
+// Short labels for compact tendency cells.
+const PITCH_ABBR = {
+  Fastball: 'FB', Changeup: 'CH', Curveball: 'CB', Riseball: 'RB',
+  Dropball: 'DB', Screwball: 'SC', 'Drop Curve': 'DC', Knuckle: 'KN'
+};
+const abbr = name => PITCH_ABBR[name] || (name || '?').slice(0, 2).toUpperCase();
+
 // 13-zone model. Inner 1-9 are the 3x3 strike zone (matches the screenshot),
 // outer 11-14 are the four "ball" quadrants just off the plate. Each entry
 // maps a zone id to a CSS grid cell area.
@@ -282,7 +289,8 @@ function createGame(pitcherId, opponent, date) {
     balls: 0,
     strikes: 0,
     bases: [false, false, false], // 1B, 2B, 3B
-    batterNo: 1
+    batterNo: 1,
+    batterHand: 'R' // which side the current batter hits from
   };
   state.games.push(g);
   state.activeGameId = g.id;
@@ -390,6 +398,14 @@ function scoreboard(g) {
         el('small', { text: `· Batter #${g.batterNo}` })
       ]),
       basesEl
+    ]),
+    el('div', { class: 'sb-hand' }, [
+      el('span', { class: 'sb-label', text: 'BATTER BATS' }),
+      el('div', { class: 'segmented hand-seg' }, ['R', 'L'].map(h =>
+        el('div', {
+          class: 'chip' + ((g.batterHand || 'R') === h ? ' selected' : ''),
+          onclick: () => { g.batterHand = h; save(); render(); }
+        }, h === 'R' ? 'Right' : 'Left')))
     ])
   ]);
 }
@@ -466,6 +482,7 @@ function commitPitch(g, zoneId, pitchType, resultId) {
     strikes: g.strikes,
     outs: g.outs,
     batterNo: g.batterNo,
+    batterHand: g.batterHand || 'R',
     ts: Date.now()
   };
   g.pitches.push(pitch);
@@ -603,6 +620,24 @@ function renderStats() {
   if (state.ui.statsGameId)
     pitches = pitches.filter(pt => games.find(g => g.id === state.ui.statsGameId)?.pitches.includes(pt));
 
+  // Batter-side filter (All / vs RHB / vs LHB). Affects every section below.
+  if (!state.ui.statsHand) state.ui.statsHand = 'all';
+  const rhb = pitches.filter(pt => pt.batterHand === 'R').length;
+  const lhb = pitches.filter(pt => pt.batterHand === 'L').length;
+  const handOpts = [
+    { key: 'all', label: `All (${pitches.length})` },
+    { key: 'R', label: `vs RHB (${rhb})` },
+    { key: 'L', label: `vs LHB (${lhb})` }
+  ];
+  wrap.appendChild(el('div', { class: 'segmented', style: { marginBottom: '14px' } },
+    handOpts.map(o => el('div', {
+      class: 'chip' + (state.ui.statsHand === o.key ? ' selected' : ''),
+      onclick: () => { state.ui.statsHand = o.key; save(); render(); }
+    }, o.label))));
+
+  if (state.ui.statsHand !== 'all')
+    pitches = pitches.filter(pt => pt.batterHand === state.ui.statsHand);
+
   if (!pitches.length) {
     wrap.appendChild(el('div', { class: 'empty' }, [el('p', { text: 'No pitches logged for this selection.' })]));
     return wrap;
@@ -618,6 +653,8 @@ function renderStats() {
 
   wrap.appendChild(metricToggle);
   wrap.appendChild(statsHeatZone(pitches, state.ui.statsMetric));
+  wrap.appendChild(statsCountGrid(pitches));
+  wrap.appendChild(statsCountTendencies(pitches));
   wrap.appendChild(statsSummary(pitches));
   wrap.appendChild(statsPitchMix(pitches));
   return wrap;
@@ -752,6 +789,95 @@ function statsPitchMix(pitches) {
   return el('div', { class: 'card' }, [
     el('h3', { text: 'Pitch Mix', style: { margin: '0 0 8px' } }),
     ...rows
+  ]);
+}
+
+// Sorted pitch-type counts: [{ type, n, pct }], most-used first.
+function pitchMixEntries(pitches) {
+  const byType = {};
+  pitches.forEach(pt => { byType[pt.pitchType] = (byType[pt.pitchType] || 0) + 1; });
+  const total = pitches.length || 1;
+  return Object.entries(byType)
+    .map(([type, n]) => ({ type, n, pct: Math.round((n / total) * 100) }))
+    .sort((a, b) => b.n - a.n);
+}
+
+function strikePct(pitches) {
+  if (!pitches.length) return null;
+  const strikes = pitches.filter(pt =>
+    ['called_strike', 'swing_strike', 'foul'].includes(pt.result) || IN_PLAY_RESULTS.includes(pt.result)).length;
+  return Math.round((strikes / pitches.length) * 100);
+}
+
+// "By count" situational tendencies — the buckets coaches actually game-plan
+// around. Buckets overlap on purpose (0-2 is both "ahead" and "two strikes").
+const COUNT_SITUATIONS = [
+  { label: 'First pitch (0-0)', test: (b, s) => b === 0 && s === 0 },
+  { label: 'Ahead (more strikes)', test: (b, s) => s > b },
+  { label: 'Even count', test: (b, s) => b === s && !(b === 0 && s === 0) },
+  { label: 'Behind (more balls)', test: (b, s) => b > s },
+  { label: 'Two strikes (put-away)', test: (b, s) => s === 2 },
+  { label: 'Three balls', test: (b, s) => b === 3 },
+];
+
+function statsCountTendencies(pitches) {
+  const rows = COUNT_SITUATIONS.map(sit => {
+    const sub = pitches.filter(pt => sit.test(pt.balls || 0, pt.strikes || 0));
+    if (!sub.length) return null;
+    const mix = pitchMixEntries(sub).slice(0, 3)
+      .map(e => `${e.type} ${e.pct}%`).join(' · ');
+    return el('div', { class: 'tend-row' }, [
+      el('div', { class: 'tend-head' }, [
+        el('span', { class: 'tend-label', text: sit.label }),
+        el('span', { class: 'tend-meta', text: `${sub.length} P · ${strikePct(sub)}% strikes` })
+      ]),
+      el('div', { class: 'tend-mix', text: mix })
+    ]);
+  }).filter(Boolean);
+
+  return el('div', { class: 'card' }, [
+    el('h3', { text: 'By Count', style: { margin: '0 0 4px' } }),
+    el('div', { class: 'muted', style: { marginBottom: '6px' }, text: 'Pitch mix by situation (top 3)' }),
+    ...rows
+  ]);
+}
+
+// Exact-count grid (4 ball-rows × 3 strike-cols). Each cell shows that count's
+// go-to pitch and how often she throws it — answers "0-2 vs 3-1" directly.
+function statsCountGrid(pitches) {
+  const maxN = Math.max(1, ...[0, 1, 2, 3].flatMap(b => [0, 1, 2].map(s =>
+    pitches.filter(pt => (pt.balls || 0) === b && (pt.strikes || 0) === s).length)));
+
+  const grid = el('div', { class: 'count-grid' });
+  // header row: strike columns
+  grid.appendChild(el('div', { class: 'count-corner', text: 'B\\S' }));
+  [0, 1, 2].forEach(s => grid.appendChild(el('div', { class: 'count-axis', text: `${s} Strk` })));
+
+  [0, 1, 2, 3].forEach(b => {
+    grid.appendChild(el('div', { class: 'count-axis', text: `${b} Ball` }));
+    [0, 1, 2].forEach(s => {
+      const sub = pitches.filter(pt => (pt.balls || 0) === b && (pt.strikes || 0) === s);
+      const top = pitchMixEntries(sub)[0];
+      const cell = el('div', {
+        class: 'count-cell' + (sub.length ? '' : ' empty'),
+        style: sub.length ? { background: heatColor(sub.length / maxN) } : {}
+      }, [
+        el('div', { class: 'cc-count', text: `${b}-${s}` }),
+        sub.length
+          ? el('div', { class: 'cc-pitch', text: abbr(top.type) })
+          : el('div', { class: 'cc-pitch dim', text: '—' }),
+        sub.length
+          ? el('div', { class: 'cc-sub', text: `${top.pct}% · ${sub.length}P` })
+          : null
+      ]);
+      grid.appendChild(cell);
+    });
+  });
+
+  return el('div', { class: 'card' }, [
+    el('h3', { text: 'Go-To Pitch by Count', style: { margin: '0 0 4px' } }),
+    el('div', { class: 'muted', style: { marginBottom: '10px' }, text: 'Most-used pitch in each count (shade = volume)' }),
+    grid
   ]);
 }
 

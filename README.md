@@ -46,6 +46,17 @@ Pitch results are logged with full detail — ball, called strike, swing & miss,
 foul, hit-by-pitch, out, and single / double / triple / home run — which is
 what powers the whiff and average-against views.
 
+**Count & batter-handedness tendencies:**
+- A **batter-side filter** (All / vs RHB / vs LHB) at the top of the Stats tab
+  re-cuts *every* view — heat map, summary, and the tendency cards — so you can
+  see how she attacks righties vs. lefties. (Set the batter's side with the
+  **Batter bats R / L** toggle on the game scoreboard as you log.)
+- **Go-To Pitch by Count** — a 4×3 grid (balls × strikes) showing her most-used
+  pitch and how often she throws it in each count, e.g. "on 0-2 she goes
+  riseball 70%." Answers "what does she throw on 0-2 vs. 3-1?" at a glance.
+- **By Count** — situational pitch mix and strike% for First pitch, Ahead,
+  Even, Behind, Two strikes (put-away), and Three balls.
+
 Filter stats by pitcher and by individual game (or all games combined).
 
 ## Running it
