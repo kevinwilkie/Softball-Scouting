@@ -26,6 +26,58 @@ const BATS = ['R', 'L', 'S']; // right / left / switch
 const BATS_LABEL = { R: 'Bats R', L: 'Bats L', S: 'Switch' };
 const POSITIONS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DP', 'FLEX', 'UTIL'];
 
+// Plate-appearance outcomes for my hitters. ab = counts as an at-bat;
+// hit = base hit; ob = reaches base (for OBP); tb = total bases.
+const AB_RESULTS = [
+  { id: '1B',  label: 'Single',     ab: true,  hit: true,  ob: true,  tb: 1, tone: 'hit' },
+  { id: '2B',  label: 'Double',     ab: true,  hit: true,  ob: true,  tb: 2, tone: 'hit' },
+  { id: '3B',  label: 'Triple',     ab: true,  hit: true,  ob: true,  tb: 3, tone: 'hit' },
+  { id: 'HR',  label: 'Home Run',   ab: true,  hit: true,  ob: true,  tb: 4, tone: 'hit' },
+  { id: 'BB',  label: 'Walk',       ab: false, hit: false, ob: true,  tb: 0, tone: 'ball' },
+  { id: 'HBP', label: 'HBP',        ab: false, hit: false, ob: true,  tb: 0, tone: 'ball' },
+  { id: 'K',   label: 'Strikeout',  ab: true,  hit: false, ob: false, tb: 0, tone: 'strike' },
+  { id: 'OUT', label: 'Out',        ab: true,  hit: false, ob: false, tb: 0, tone: 'out' },
+  { id: 'FC',  label: "Fielder's Choice", ab: true, hit: false, ob: false, tb: 0, tone: 'out' },
+  { id: 'ROE', label: 'Reached on Error', ab: true, hit: false, ob: false, tb: 0, tone: 'out' },
+  { id: 'SAC', label: 'Sacrifice',  ab: false, hit: false, ob: false, tb: 0, tone: 'out' },
+];
+const AB_BY_ID = Object.fromEntries(AB_RESULTS.map(r => [r.id, r]));
+
+// Aggregate a hitting line from a set of at-bats.
+function hittingLine(atbats) {
+  let ab = 0, h = 0, bb = 0, hbp = 0, k = 0, tb = 0, rbi = 0, d2 = 0, t3 = 0, hr = 0, ob = 0;
+  atbats.forEach(a => {
+    const r = AB_BY_ID[a.result];
+    if (!r) return;
+    if (r.ab) ab++;
+    if (r.hit) h++;
+    if (r.ob) ob++;
+    if (a.result === 'BB') bb++;
+    if (a.result === 'HBP') hbp++;
+    if (a.result === 'K') k++;
+    if (a.result === '2B') d2++;
+    if (a.result === '3B') t3++;
+    if (a.result === 'HR') hr++;
+    tb += r.tb;
+    rbi += (+a.rbi || 0);
+  });
+  const obDen = ab + bb + hbp; // approximates AB + BB + HBP + SF
+  const avg = ab ? h / ab : 0;
+  const obp = obDen ? ob / obDen : 0;
+  const slg = ab ? tb / ab : 0;
+  const fmt = n => n.toFixed(3).replace(/^0/, '');
+  return {
+    pa: atbats.length, ab, h, bb, hbp, k, tb, rbi, d2, t3, hr,
+    avg: ab ? fmt(avg) : '—', obp: obDen ? fmt(obp) : '—', slg: ab ? fmt(slg) : '—',
+    ops: (ab || obDen) ? fmt(obp + slg) : '—'
+  };
+}
+
+function hitterAtBats(hitterId) {
+  return (state.atbats || []).filter(a => a.hitterId === hitterId)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
 // 13-zone model. Inner 1-9 are the 3x3 strike zone (matches the screenshot),
 // outer 11-14 are the four "ball" quadrants just off the plate. Each entry
 // maps a zone id to a CSS grid cell area.
@@ -93,6 +145,7 @@ const defaultState = () => ({
   hitters: [],      // {id, name, bats, number, position}  (Carrollton's hitters)
   opponents: [],    // {id, name, players:[{id, name, bats, number, position, isPitcher}]}
   schedule: [],     // {id, date, time, opponentId, opponentName, homeAway, location, notes, gameId}
+  atbats: [],       // {id, hitterId, date, opponentId, opponentName, result, rbi}  (my hitters' offense)
   games: [],        // {id, date, opponentId, pitcherId, pitches:[...], ...lineups}
   activeGameId: null,
   ui: { tab: 'pitchers', statsPitcherId: null, statsGameId: null }
@@ -109,6 +162,7 @@ function load() {
       if (!Array.isArray(s.hitters)) s.hitters = [];
       if (!Array.isArray(s.opponents)) s.opponents = [];
       if (!Array.isArray(s.schedule)) s.schedule = [];
+      if (!Array.isArray(s.atbats)) s.atbats = [];
       if (s.ui && s.ui.tab === 'roster') s.ui.tab = 'pitchers';
       return s;
     }
@@ -335,23 +389,154 @@ function openPitcherForm(existing) {
 /* ======================= MY TEAM (HITTERS) TAB ======================== */
 
 function renderHitters() {
+  if (state.ui.openHitterId) {
+    const h = hitterById(state.ui.openHitterId);
+    if (h) return renderHitterProfile(h);
+    state.ui.openHitterId = null;
+  }
+
   const wrap = el('div');
   wrap.appendChild(el('div', { class: 'section-head' }, [
     el('h2', { text: 'My Hitters' }),
-    el('button', { class: 'btn btn-primary btn-sm', onclick: () => openHitterForm() }, '+ Add Hitter')
+    el('div', {}, [
+      state.hitters.length ? el('button', { class: 'btn btn-sm', onclick: () => openAtBatForm() }, '+ Log AB') : null,
+      el('button', { class: 'btn btn-primary btn-sm', style: { marginLeft: '8px' }, onclick: () => openHitterForm() }, '+ Add')
+    ])
   ]));
 
   if (state.hitters.length === 0) {
     wrap.appendChild(el('div', { class: 'empty' }, [
       el('p', { text: '🥎' }),
       el('p', { text: 'No hitters yet.' }),
-      el('p', { class: 'muted', text: "Add Carrollton's hitters so you can set the lineup during a game." })
+      el('p', { class: 'muted', text: "Add Carrollton's hitters so you can set the lineup and track their hitting stats." })
     ]));
     return wrap;
   }
 
-  state.hitters.forEach(h => wrap.appendChild(playerCard(h, () => openHitterForm(h), () => deleteHitter(h))));
+  state.hitters.forEach(h => {
+    const line = hittingLine(hitterAtBats(h.id));
+    wrap.appendChild(el('div', { class: 'card card-tappable', onclick: () => { state.ui.openHitterId = h.id; save(); render(); } }, [
+      el('div', { class: 'pitcher-card' }, [
+        el('div', { class: `pitcher-num hand-${h.bats === 'L' ? 'L' : 'R'}`, text: h.number ? `#${h.number}` : (h.name[0] || '?').toUpperCase() }),
+        el('div', { class: 'pitcher-info' }, [
+          el('h3', { text: h.name }),
+          el('div', { class: 'pitcher-meta', text: [BATS_LABEL[h.bats] || 'Bats R', h.position || null].filter(Boolean).join(' · ') }),
+          el('div', { class: 'pitcher-meta muted', text: line.pa ? `${line.avg} AVG · ${line.h}-${line.ab} · ${line.hr} HR` : 'No at-bats logged' })
+        ]),
+        el('div', { class: 'card-chevron' }, [
+          line.pa ? el('span', { class: 'card-count', text: `${line.pa} PA` }) : null,
+          el('span', { text: '›' })
+        ])
+      ])
+    ]));
+  });
   return wrap;
+}
+
+function renderHitterProfile(h) {
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'section-head' }, [
+    el('button', { class: 'btn btn-sm', onclick: () => { state.ui.openHitterId = null; save(); render(); } }, '‹ Back'),
+    el('div', {}, [
+      el('button', { class: 'btn btn-sm btn-primary', onclick: () => openAtBatForm(h.id) }, '+ Log AB'),
+      el('button', { class: 'btn btn-sm', style: { marginLeft: '8px' }, onclick: () => openHitterForm(h) }, 'Edit'),
+      el('button', { class: 'btn btn-sm btn-danger', style: { marginLeft: '8px' }, onclick: () => deleteHitter(h) }, 'Delete')
+    ])
+  ]));
+
+  wrap.appendChild(el('div', { class: 'profile-head' }, [
+    el('div', { class: `profile-badge hand-${h.bats === 'L' ? 'L' : 'R'}`, text: h.number ? `#${h.number}` : (h.name[0] || '?').toUpperCase() }),
+    el('div', {}, [
+      el('h2', { style: { margin: 0 }, text: h.name }),
+      el('div', { class: 'muted', text: [BATS_LABEL[h.bats] || 'Bats R', h.position || null].filter(Boolean).join(' · ') })
+    ])
+  ]));
+
+  const abs = hitterAtBats(h.id);
+  const line = hittingLine(abs);
+  wrap.appendChild(el('div', { class: 'card' }, [
+    el('h3', { text: 'Season Hitting', style: { margin: '0 0 8px' } }),
+    el('div', { class: 'line-grid' }, [
+      lineStat('AVG', line.avg), lineStat('OBP', line.obp), lineStat('SLG', line.slg), lineStat('OPS', line.ops),
+      lineStat('AB', line.ab), lineStat('H', line.h), lineStat('HR', line.hr), lineStat('RBI', line.rbi),
+      lineStat('BB', line.bb), lineStat('K', line.k), lineStat('2B', line.d2), lineStat('3B', line.t3)
+    ])
+  ]));
+
+  if (!abs.length) {
+    wrap.appendChild(el('div', { class: 'empty' }, [
+      el('p', { text: 'No at-bats logged.' }),
+      el('button', { class: 'btn btn-primary', onclick: () => openAtBatForm(h.id) }, 'Log an At-Bat')
+    ]));
+    return wrap;
+  }
+
+  const log = el('div', { class: 'card' }, [el('h3', { text: 'At-Bat Log', style: { margin: '0 0 6px' } })]);
+  abs.forEach(a => {
+    const r = AB_BY_ID[a.result];
+    log.appendChild(el('div', { class: 'ab-row' }, [
+      el('span', { class: `log-pill res-${r ? r.tone : 'out'}`, text: a.result }),
+      el('div', { class: 'ab-info' }, [
+        el('div', { text: `${r ? r.label : a.result}${a.rbi ? ` · ${a.rbi} RBI` : ''}` }),
+        el('div', { class: 'log-sub', text: `${a.date}${a.opponentName || (a.opponentId && opponentById(a.opponentId)?.name) ? ' · vs ' + (a.opponentName || opponentById(a.opponentId).name) : ''}` })
+      ]),
+      el('button', { class: 'log-del', onclick: () => { state.atbats = state.atbats.filter(x => x.id !== a.id); save(); render(); } }, '×')
+    ]));
+  });
+  wrap.appendChild(log);
+  return wrap;
+}
+
+// Quick at-bat entry. hitterId optional (preselected when from a profile).
+function openAtBatForm(hitterId) {
+  if (!state.hitters.length) { toast('Add a hitter first'); return; }
+  const draft = { id: uid(), hitterId: hitterId || state.hitters[0].id, date: todayISO(), opponentId: null, opponentName: '', result: null, rbi: 0 };
+
+  const hitterSelect = el('select', { onchange: e => draft.hitterId = e.target.value }, state.hitters.map(h =>
+    el('option', { value: h.id, selected: h.id === draft.hitterId }, `${h.number ? '#' + h.number + ' ' : ''}${h.name}`)));
+  const dateInput = el('input', { type: 'date', value: draft.date });
+  const oppSelect = el('select', { onchange: e => draft.opponentId = e.target.value || null }, [
+    el('option', { value: '' }, '— Opponent (optional) —'),
+    ...state.opponents.map(o => el('option', { value: o.id }, o.name))
+  ]);
+
+  const rbiVal = el('span', { class: 'rbi-num', text: '0' });
+  const setRbi = d => { draft.rbi = Math.max(0, draft.rbi + d); rbiVal.textContent = String(draft.rbi); };
+
+  function commit(resultId) {
+    draft.result = resultId;
+    draft.hitterId = hitterSelect.value;
+    draft.date = dateInput.value;
+    draft.opponentId = oppSelect.value || null;
+    state.atbats.push(draft);
+    save(); closeModal(); render();
+    const hn = hitterById(draft.hitterId);
+    toast(`${hn ? hn.name : 'AB'} · ${AB_BY_ID[resultId].label}`);
+  }
+
+  const resGrid = el('div', { class: 'opt-grid cols-3' }, AB_RESULTS.map(r =>
+    el('div', { class: `opt tone-${r.tone}`, onclick: () => commit(r.id) }, r.label)));
+
+  openModal(el('div', {}, [
+    el('div', { class: 'sheet-handle' }),
+    el('h3', { text: 'Log At-Bat' }),
+    el('div', { class: 'field' }, [el('label', { text: 'Hitter' }), hitterSelect]),
+    el('div', { class: 'row-2' }, [
+      el('div', { class: 'field' }, [el('label', { text: 'Date' }), dateInput]),
+      el('div', { class: 'field' }, [el('label', { text: 'Opponent' }), oppSelect])
+    ]),
+    el('div', { class: 'field' }, [
+      el('label', { text: 'RBI' }),
+      el('div', { class: 'rbi-stepper' }, [
+        el('button', { class: 'score-btn', onclick: () => setRbi(-1) }, '−'),
+        rbiVal,
+        el('button', { class: 'score-btn', onclick: () => setRbi(1) }, '+')
+      ])
+    ]),
+    el('div', { class: 'sheet-section-label', text: 'Result (tap to save)' }),
+    resGrid,
+    el('button', { class: 'btn btn-block', style: { marginTop: '14px' }, onclick: closeModal }, 'Cancel')
+  ]));
 }
 
 // Shared card for a hitter / opponent player.
@@ -376,10 +561,12 @@ function playerCard(pl, onEdit, onDelete) {
 }
 
 function deleteHitter(h) {
-  if (!confirm(`Delete ${h.name}?`)) return;
+  if (!confirm(`Delete ${h.name}? Their at-bats will also be removed.`)) return;
   state.hitters = state.hitters.filter(x => x.id !== h.id);
+  state.atbats = (state.atbats || []).filter(a => a.hitterId !== h.id);
   // Remove from any game's lineup.
   state.games.forEach(g => { if (g.myLineup) g.myLineup = g.myLineup.filter(id => id !== h.id); });
+  state.ui.openHitterId = null;
   save();
   render();
 }
@@ -1527,9 +1714,29 @@ function renderSeasonStats() {
     el('td', { text: tl.whiffPct + '%' })
   ]));
 
+  wrap.appendChild(el('div', { class: 'sched-group-label', text: 'Pitching' }));
   wrap.appendChild(el('div', { class: 'season-wrap' }, [el('table', { class: 'season-table' }, [el('thead', {}, [head]), body])]));
-  wrap.appendChild(el('p', { class: 'muted', style: { marginTop: '10px', fontSize: '12px' },
-    text: 'Season pitching totals across all logged games. Tap a pitcher for their full card. R = runs allowed.' }));
+  wrap.appendChild(el('p', { class: 'muted', style: { margin: '8px 0 4px', fontSize: '12px' },
+    text: 'Tap a pitcher for their full card. R = runs allowed.' }));
+
+  // Hitting table (my hitters with at-bats).
+  const batters = state.hitters.filter(h => hitterAtBats(h.id).length);
+  if (batters.length) {
+    const hCols = ['Hitter', 'AVG', 'OBP', 'SLG', 'OPS', 'AB', 'H', 'HR', 'RBI', 'BB', 'K'];
+    const hHead = el('tr', {}, hCols.map((c, i) => el('th', { class: i === 0 ? 'col-name' : '', text: c })));
+    const hBody = el('tbody');
+    batters.forEach(h => {
+      const l = hittingLine(hitterAtBats(h.id));
+      hBody.appendChild(el('tr', { class: 'season-row', onclick: () => { state.ui.tab = 'hitters'; state.ui.openHitterId = h.id; save(); setTab('hitters'); } }, [
+        el('td', { class: 'col-name', text: h.name }),
+        el('td', { text: l.avg }), el('td', { text: l.obp }), el('td', { text: l.slg }), el('td', { text: l.ops }),
+        el('td', { text: String(l.ab) }), el('td', { text: String(l.h) }), el('td', { text: String(l.hr) }),
+        el('td', { text: String(l.rbi) }), el('td', { text: String(l.bb) }), el('td', { text: String(l.k) })
+      ]));
+    });
+    wrap.appendChild(el('div', { class: 'sched-group-label', style: { marginTop: '18px' }, text: 'Hitting' }));
+    wrap.appendChild(el('div', { class: 'season-wrap' }, [el('table', { class: 'season-table' }, [el('thead', {}, [hHead]), hBody])]));
+  }
   return wrap;
 }
 
@@ -1550,7 +1757,7 @@ function renderScoutingStats() {
   const selRow = el('div', { class: 'pill-row' }, state.pitchers.map(p =>
     el('div', {
       class: 'spitch' + (p.id === state.ui.statsPitcherId ? ' selected' : ''),
-      onclick: () => { state.ui.statsPitcherId = p.id; state.ui.statsGameId = null; save(); render(); }
+      onclick: () => { state.ui.statsPitcherId = p.id; state.ui.statsGameId = null; state.ui.statsBatter = null; save(); render(); }
     }, p.name)));
   wrap.appendChild(selRow);
 
@@ -1568,6 +1775,32 @@ function renderScoutingStats() {
 
   if (state.ui.statsGameId)
     pitches = pitches.filter(pt => games.find(g => g.id === state.ui.statsGameId)?.pitches.includes(pt));
+
+  // Per-hitter filter: how this pitcher attacked a specific batter she faced.
+  const batterKey = pt => pt.batterId ? 'id:' + pt.batterId : (pt.batterName ? 'nm:' + pt.batterName : null);
+  const batterMap = new Map();
+  pitches.forEach(pt => {
+    const k = batterKey(pt);
+    if (!k) return;
+    if (!batterMap.has(k)) batterMap.set(k, { key: k, name: pt.batterName || 'Unknown', n: 0 });
+    batterMap.get(k).n++;
+  });
+  if (batterMap.size) {
+    const batterSel = el('select', { onchange: e => { state.ui.statsBatter = e.target.value || null; save(); render(); } }, [
+      el('option', { value: '' }, `All batters faced (${batterMap.size})`),
+      ...[...batterMap.values()].sort((a, b) => b.n - a.n).map(b =>
+        el('option', { value: b.key, selected: b.key === state.ui.statsBatter }, `${b.name} — ${b.n} pitches`))
+    ]);
+    wrap.appendChild(el('div', { class: 'field' }, [el('label', { text: 'Vs hitter' }), batterSel]));
+    if (state.ui.statsBatter) {
+      pitches = pitches.filter(pt => batterKey(pt) === state.ui.statsBatter);
+      const ln = pitchingLine(pitches);
+      wrap.appendChild(el('div', { class: 'card', style: { padding: '12px 14px' } }, [
+        el('div', { style: { fontWeight: '700', marginBottom: '2px' }, text: `${pitches.length} pitches · ${ln.k} K · ${ln.bb} BB · ${ln.h} H` }),
+        el('div', { class: 'muted', style: { fontSize: '12px' }, text: `${ln.baa} avg against · ${ln.whiffPct}% whiff` })
+      ]));
+    }
+  }
 
   // Batter-side filter (All / vs RHB / vs LHB). Affects every section below.
   if (!state.ui.statsHand) state.ui.statsHand = 'all';
@@ -1848,6 +2081,72 @@ function closeModal() {
   host.innerHTML = '';
 }
 
+/* ----------------------- Backup / restore ------------------------------ */
+
+function openBackupMenu() {
+  const fileInput = el('input', { type: 'file', accept: '.json,application/json', onchange: ev => {
+    const f = ev.target.files && ev.target.files[0];
+    if (f) importBackup(f);
+  } });
+
+  openModal(el('div', {}, [
+    el('h3', { text: 'Backup & Restore' }),
+    el('p', { class: 'sheet-sub', text: 'Your data lives only on this device. Export a backup to keep it safe or move it to another phone.' }),
+    el('div', { class: 'stat-row' }, [el('span', { text: 'Pitchers' }), el('span', { class: 'v', text: String(state.pitchers.length) })]),
+    el('div', { class: 'stat-row' }, [el('span', { text: 'Hitters' }), el('span', { class: 'v', text: String(state.hitters.length) })]),
+    el('div', { class: 'stat-row' }, [el('span', { text: 'Opponents' }), el('span', { class: 'v', text: String(state.opponents.length) })]),
+    el('div', { class: 'stat-row' }, [el('span', { text: 'Games' }), el('span', { class: 'v', text: String(state.games.length) })]),
+    el('div', { class: 'stat-row' }, [el('span', { text: 'At-bats' }), el('span', { class: 'v', text: String((state.atbats || []).length) })]),
+    el('button', { class: 'btn btn-primary btn-block', style: { marginTop: '16px' }, onclick: exportBackup }, '⬇ Export backup (.json)'),
+    el('div', { class: 'field', style: { marginTop: '14px' } }, [
+      el('label', { text: 'Restore from a backup file' }), fileInput
+    ]),
+    el('p', { class: 'muted', style: { fontSize: '12px' }, text: 'Restoring replaces everything currently in the app.' }),
+    el('button', { class: 'btn btn-block', style: { marginTop: '8px' }, onclick: closeModal }, 'Close')
+  ]));
+}
+
+function exportBackup() {
+  const payload = {
+    app: 'chs-softball-scout', version: 1, exportedAt: new Date().toISOString(),
+    pitchers: state.pitchers, hitters: state.hitters, opponents: state.opponents,
+    schedule: state.schedule, games: state.games, atbats: state.atbats || []
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = el('a', { href: url, download: `chs-scout-backup-${new Date().toISOString().slice(0, 10)}.json` });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast('Backup exported');
+}
+
+function importBackup(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    let data;
+    try { data = JSON.parse(String(reader.result || '')); }
+    catch (e) { toast('Not a valid backup file'); return; }
+    if (!data || (!data.pitchers && !data.games)) { toast('Unrecognized backup'); return; }
+    const counts = `${(data.pitchers || []).length} pitchers, ${(data.games || []).length} games, ${(data.hitters || []).length} hitters`;
+    if (!confirm(`Restore this backup (${counts})? This replaces all current data.`)) return;
+    state.pitchers = data.pitchers || [];
+    state.hitters = data.hitters || [];
+    state.opponents = data.opponents || [];
+    state.schedule = data.schedule || [];
+    state.games = data.games || [];
+    state.atbats = data.atbats || [];
+    state.activeGameId = null;
+    state.ui = { tab: 'pitchers' };
+    save();
+    closeModal();
+    render();
+    toast('Backup restored');
+  };
+  reader.readAsText(file);
+}
+
 /* ----------------------------- Boot ------------------------------------ */
 
 if ('serviceWorker' in navigator) {
@@ -1856,4 +2155,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-setTab(state.ui.tab || 'roster');
+const menuBtn = document.getElementById('menu-btn');
+if (menuBtn) menuBtn.addEventListener('click', openBackupMenu);
+
+setTab(state.ui.tab || 'pitchers');

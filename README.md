@@ -36,9 +36,14 @@ runs), so the card reflects the actual scoreboard.
 When a game is over, tap **End Game** on the scoreboard to mark it *Final* — its
 results are saved to the pitcher's card automatically.
 
-### My Team tab
+### My Team tab (Hitters)
 Carrollton's hitters. For each: name, jersey number, bats (R / L / Switch),
-and position. This is the pool you draw your batting order from at game time.
+and position — the pool you draw your batting order from at game time.
+
+Tap **+ Log AB** to record a plate appearance (single / double / triple / HR /
+walk / HBP / strikeout / out / FC / ROE / sacrifice, with optional RBI). Tap a
+hitter to open their **card**: season hitting line (AVG, OBP, SLG, OPS, AB, H,
+HR, RBI, BB, K, 2B, 3B) and a full at-bat log.
 
 ### Opponents tab
 Opponent teams, each with its own roster. Open a team to add players (name,
@@ -92,11 +97,17 @@ You can run multiple games and switch between them. Each game is saved.
 ### Stats tab
 Two modes via the toggle at the top:
 
-**Season** — a team-wide table of every pitcher's season-long line (games, IP,
-K, BB, H, runs allowed, average-against, strikeout %, and whiff %), with a team
-totals row. Tap any pitcher to open their full player card.
+**Season** — team-wide season tables:
+- **Pitching** — every pitcher's line (games, IP, K, BB, H, runs allowed,
+  average-against, strikeout %, whiff %) with a team totals row.
+- **Hitting** — every hitter with logged at-bats (AVG, OBP, SLG, OPS, AB, H,
+  HR, RBI, BB, K).
 
-**Scouting** — per-pitcher analysis for the selected pitcher:
+Tap any row to open that player's card.
+
+**Scouting** — per-pitcher analysis for the selected pitcher. Includes a
+**Vs hitter** filter to see how the pitcher attacked a specific batter she
+faced (their matchup line, heat map, and tendencies). Plus:
 - A **strike-zone heat map** (blue → red, matching the screenshot's style) with
   a metric toggle:
   - **Frequency** — where she throws most
@@ -166,8 +177,12 @@ native app — it caches offline so it works in the stands with no signal.
 ## Data & privacy
 
 All data lives in your browser's `localStorage` on the device you use. Nothing
-is uploaded anywhere. Clearing your browser data (or using a different device)
-starts fresh.
+is uploaded anywhere.
+
+Use the **⚙ menu** in the top-right to **Export a backup** (downloads a `.json`
+file of everything) or **Restore** from one. Export regularly — clearing your
+browser data or switching devices otherwise starts fresh, and a backup lets you
+move your season to another phone.
 
 ## Tech
 
