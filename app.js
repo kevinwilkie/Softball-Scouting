@@ -212,6 +212,12 @@ function render() {
 /* ============================ ROSTER TAB =============================== */
 
 function renderRoster() {
+  if (state.ui.openPitcherId) {
+    const p = pitcherById(state.ui.openPitcherId);
+    if (p) return renderPitcherProfile(p);
+    state.ui.openPitcherId = null;
+  }
+
   const wrap = el('div');
   wrap.appendChild(el('div', { class: 'section-head' }, [
     el('h2', { text: 'Pitchers' }),
@@ -233,7 +239,8 @@ function renderRoster() {
 
 function pitcherCard(p) {
   const initials = p.name.split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
-  return el('div', { class: 'card' }, [
+  const nGames = pitcherGames(p.id).length;
+  return el('div', { class: 'card card-tappable', onclick: () => openPitcherProfile(p) }, [
     el('div', { class: 'pitcher-card' }, [
       el('div', { class: `pitcher-num hand-${p.hand}`, text: initials || '?' }),
       el('div', { class: 'pitcher-info' }, [
@@ -246,11 +253,11 @@ function pitcherCard(p) {
         p.pitches && p.pitches.length
           ? el('div', { class: 'pitch-tags' }, p.pitches.map(pt => el('span', { class: 'pitch-tag', text: pt })))
           : el('div', { class: 'pitcher-meta muted', text: 'No pitches recorded' })
+      ]),
+      el('div', { class: 'card-chevron' }, [
+        nGames ? el('span', { class: 'card-count', text: `${nGames} G` }) : null,
+        el('span', { text: '›' })
       ])
-    ]),
-    el('div', { class: 'card-actions' }, [
-      el('button', { class: 'btn btn-sm', onclick: () => openPitcherForm(p) }, 'Edit'),
-      el('button', { class: 'btn btn-sm btn-danger', onclick: () => deletePitcher(p) }, 'Delete')
     ])
   ]);
 }
@@ -566,11 +573,12 @@ function createGame(pitcherId, opponentId, date) {
     bases: [false, false, false], // 1B, 2B, 3B
     batterNo: 1,
     batterHand: 'R',      // fallback when no lineup is set / switch hitters
-    battingSide: 'me',    // which lineup is at bat: 'me' (Carrollton) or 'opp'
+    battingSide: 'opp',   // opponent hits against our pitcher by default
     myLineup: [],         // ordered hitter ids
     oppLineup: [],        // ordered opponent player ids
     myIdx: 0,             // current spot in my order
-    oppIdx: 0             // current spot in opponent order
+    oppIdx: 0,            // current spot in opponent order
+    final: false          // marked when the game is over
   };
   state.games.push(g);
   state.activeGameId = g.id;
@@ -606,12 +614,13 @@ function renderGame() {
   wrap.appendChild(el('div', { class: 'section-head' }, [
     el('div', {}, [
       el('h2', { text: p ? p.name : 'Pitcher' }),
-      el('div', { class: 'muted', text: `vs ${gameOpponentName(g)} · ${g.date}` })
+      el('div', { class: 'muted', text: `vs ${gameOpponentName(g)} · ${g.date}${g.final ? ' · Final' : ''}` })
     ]),
     el('button', { class: 'btn btn-sm', onclick: () => { state.activeGameId = null; save(); render(); } }, 'Games')
   ]));
 
   wrap.appendChild(scoreboard(g));
+  if (g.pitches.length) wrap.appendChild(endGameBar(g, p));
   wrap.appendChild(lineupPanel(g));
   wrap.appendChild(strikeZonePanel(g));
   wrap.appendChild(pitchLog(g));
@@ -697,6 +706,26 @@ function clampIdx(g, side) {
   else g.oppIdx = (g.oppIdx || 0) % len;
 }
 
+// Live pitching line + finalize control under the scoreboard.
+function endGameBar(g, p) {
+  const line = pitchingLine(g.pitches);
+  return el('div', { class: 'card endgame-bar' }, [
+    el('div', { class: 'eg-line' }, [
+      el('span', { text: `${line.ip} IP · ${line.k} K · ${line.bb} BB · ${line.h} H` }),
+      el('span', { class: 'muted', text: `${line.pitches} P · ${line.strikePct}% strikes` })
+    ]),
+    g.final
+      ? el('button', { class: 'btn btn-sm', onclick: () => { g.final = false; save(); render(); toast('Game reopened'); } }, 'Reopen')
+      : el('button', { class: 'btn btn-sm btn-primary', onclick: () => {
+          if (!confirm(`End this game for ${p ? p.name : 'this pitcher'}? Their results will be saved to their card.`)) return;
+          g.final = true; save();
+          state.ui.openPitcherId = g.pitcherId; state.activeGameId = null;
+          setTab('pitchers');
+          toast('Game saved to card');
+        } }, 'End Game')
+  ]);
+}
+
 function renderGamePicker() {
   const box = el('div');
 
@@ -738,7 +767,10 @@ function renderGamePicker() {
       const p = pitcherById(g.pitcherId);
       box.appendChild(el('div', { class: 'game-row' }, [
         el('div', {}, [
-          el('div', { class: 'gr-main', text: p ? p.name : 'Unknown' }),
+          el('div', { class: 'gr-main' }, [
+            p ? p.name : 'Unknown',
+            g.final ? el('span', { class: 'badge badge-final', style: { marginLeft: '8px' }, text: 'Final' }) : null
+          ]),
           el('div', { class: 'gr-sub', text: `vs ${gameOpponentName(g)} · ${g.date} · ${g.pitches.length} pitches` })
         ]),
         el('button', { class: 'btn btn-sm', onclick: () => { state.activeGameId = g.id; save(); render(); } }, 'Open')
@@ -1023,6 +1055,150 @@ function recomputeGame(g) {
     g.pitches.push(pt);
     applyCount(g, pt.result, pt.battingSide || 'me');
   });
+}
+
+/* ===================== PITCHING LINE / RESULTS ======================== */
+
+// Classify a pitch as the end of an at-bat (using the count BEFORE the pitch).
+// Returns 'K' | 'BB' | 'H' | 'OUT' | 'HBP' | null.
+function atBatEnd(pt) {
+  const b = pt.balls || 0, s = pt.strikes || 0;
+  if (pt.result === 'ball') return b >= 3 ? 'BB' : null;
+  if (pt.result === 'called_strike' || pt.result === 'swing_strike') return s >= 2 ? 'K' : null;
+  if (pt.result === 'in_play_out') return 'OUT';
+  if (pt.result === 'hbp') return 'HBP';
+  if (HIT_RESULTS.includes(pt.result)) return 'H';
+  return null;
+}
+
+function formatIP(outs) {
+  return `${Math.floor(outs / 3)}.${outs % 3}`;
+}
+
+// Aggregate a pitching line from a set of pitches (one game or many).
+function pitchingLine(pitches) {
+  let k = 0, bb = 0, h = 0, hbp = 0, ipOuts = 0, bf = 0;
+  pitches.forEach(pt => {
+    const end = atBatEnd(pt);
+    if (!end) return;
+    bf++;
+    if (end === 'K') k++;
+    else if (end === 'BB') bb++;
+    else if (end === 'H') h++;
+    else if (end === 'OUT') ipOuts++;
+    else if (end === 'HBP') hbp++;
+  });
+  const outs = k + ipOuts;
+  const strikes = pitches.filter(pt =>
+    ['called_strike', 'swing_strike', 'foul'].includes(pt.result) || IN_PLAY_RESULTS.includes(pt.result)).length;
+  const whiffs = pitches.filter(pt => pt.result === 'swing_strike').length;
+  const swings = pitches.filter(pt => SWING_RESULTS.includes(pt.result)).length;
+  const bip = pitches.filter(pt => IN_PLAY_RESULTS.includes(pt.result)).length;
+  const total = pitches.length;
+  return {
+    pitches: total, bf, k, bb, h, hbp, outs,
+    ip: formatIP(outs),
+    strikePct: total ? Math.round((strikes / total) * 100) : 0,
+    whiffPct: swings ? Math.round((whiffs / swings) * 100) : 0,
+    baa: bip ? (h / bip).toFixed(3).replace(/^0/, '') : '—'
+  };
+}
+
+function pitcherGames(pitcherId) {
+  return state.games.filter(g => g.pitcherId === pitcherId)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+/* ===================== PITCHER PROFILE (PLAYER CARD) ================== */
+
+function openPitcherProfile(p) {
+  state.ui.openPitcherId = p.id;
+  save();
+  render();
+}
+
+function renderPitcherProfile(p) {
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'section-head' }, [
+    el('button', { class: 'btn btn-sm', onclick: () => { state.ui.openPitcherId = null; save(); render(); } }, '‹ Back'),
+    el('div', {}, [
+      el('button', { class: 'btn btn-sm', onclick: () => openPitcherForm(p) }, 'Edit'),
+      el('button', { class: 'btn btn-sm btn-danger', style: { marginLeft: '8px' }, onclick: () => deletePitcher(p) }, 'Delete')
+    ])
+  ]));
+
+  // Identity header
+  const initials = p.name.split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
+  wrap.appendChild(el('div', { class: 'profile-head' }, [
+    el('div', { class: `profile-badge hand-${p.hand}`, text: initials || '?' }),
+    el('div', {}, [
+      el('h2', { style: { margin: 0 }, text: p.name }),
+      el('div', { class: 'muted', text: [
+        p.classification ? fmtClass(p.classification) : null,
+        p.hand === 'L' ? 'Left-handed' : 'Right-handed',
+        p.opponentId && opponentById(p.opponentId) ? opponentById(p.opponentId).name : null
+      ].filter(Boolean).join(' · ') }),
+      p.pitches && p.pitches.length
+        ? el('div', { class: 'pitch-tags', style: { marginTop: '6px' } }, p.pitches.map(pt => el('span', { class: 'pitch-tag', text: pt })))
+        : null
+    ])
+  ]));
+
+  const games = pitcherGames(p.id);
+  if (!games.length) {
+    wrap.appendChild(el('div', { class: 'empty' }, [
+      el('p', { text: 'No games logged yet.' }),
+      el('button', { class: 'btn btn-primary', onclick: () => setTab('game') }, 'Log a Game')
+    ]));
+    return wrap;
+  }
+
+  // Season totals across all of this pitcher's games.
+  const allPitches = games.flatMap(g => g.pitches);
+  const tot = pitchingLine(allPitches);
+  wrap.appendChild(el('div', { class: 'card' }, [
+    el('h3', { text: 'Season Totals', style: { margin: '0 0 4px' } }),
+    el('div', { class: 'muted', style: { marginBottom: '8px' }, text: `${games.length} game${games.length === 1 ? '' : 's'} · ${tot.pitches} pitches` }),
+    el('div', { class: 'line-grid' }, [
+      lineStat('IP', tot.ip), lineStat('BF', tot.bf), lineStat('K', tot.k),
+      lineStat('BB', tot.bb), lineStat('H', tot.h), lineStat('Strike%', tot.strikePct + '%'),
+      lineStat('Whiff%', tot.whiffPct + '%'), lineStat('AVG', tot.baa)
+    ])
+  ]));
+
+  // Per-game results log.
+  const log = el('div', { class: 'card' }, [el('h3', { text: 'Game Log', style: { margin: '0 0 10px' } })]);
+  games.forEach(g => {
+    const line = pitchingLine(g.pitches);
+    log.appendChild(el('div', { class: 'gamelog-row' }, [
+      el('div', { class: 'glr-top' }, [
+        el('span', { class: 'glr-opp', text: `vs ${gameOpponentName(g)}` }),
+        g.final
+          ? el('span', { class: 'badge badge-final', text: 'Final' })
+          : el('span', { class: 'badge badge-live', text: 'In progress' })
+      ]),
+      el('div', { class: 'glr-date muted', text: g.date }),
+      el('div', { class: 'glr-line', text: `${line.ip} IP · ${line.k} K · ${line.bb} BB · ${line.h} H · ${line.strikePct}% strikes` }),
+      el('div', { class: 'glr-actions' }, [
+        el('button', { class: 'btn btn-sm', onclick: () => {
+          state.ui.statsPitcherId = p.id; state.ui.statsGameId = g.id; state.ui.openPitcherId = null;
+          setTab('stats');
+        } }, 'View stats'),
+        !g.final
+          ? el('button', { class: 'btn btn-sm', onclick: () => { state.activeGameId = g.id; state.ui.openPitcherId = null; setTab('game'); } }, 'Resume')
+          : null
+      ])
+    ]));
+  });
+  wrap.appendChild(log);
+  return wrap;
+}
+
+function lineStat(label, value) {
+  return el('div', { class: 'line-stat' }, [
+    el('div', { class: 'ls-val', text: String(value) }),
+    el('div', { class: 'ls-label', text: label })
+  ]);
 }
 
 /* ============================ STATS TAB =============================== */

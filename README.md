@@ -16,7 +16,22 @@ Build a roster of pitchers you want to scout. For each pitcher you can record:
 - **Pitch types** — Fastball, Changeup, Curveball, Riseball, Dropball,
   Screwball, Drop Curve, Knuckle (multi-select)
 
-Add, edit, and delete pitchers.
+Add, edit, and delete pitchers. **Tap a pitcher to open their player card** —
+a profile with season totals and a game-by-game results log (see below). This
+works equally well whether you're scouting opposing pitchers or tracking your
+own staff.
+
+### Player card (pitcher results)
+Selecting a pitcher's name opens their card:
+- **Season totals** across all their games — IP, batters faced, K, BB, H,
+  strike %, whiff %, and average-against.
+- **Game log** — one row per game with that game's pitching line
+  (e.g. "5.1 IP · 7 K · 1 BB · 3 H · 61% strikes"), a Final / In-progress
+  badge, a **View stats** button (jumps to that game's heat map and tendencies)
+  and a **Resume** button for games still in progress.
+
+When a game is over, tap **End Game** on the scoreboard to mark it *Final* — its
+results are saved to the pitcher's card automatically.
 
 ### My Team tab
 Carrollton's hitters. For each: name, jersey number, bats (R / L / Switch),
@@ -37,9 +52,14 @@ game pitch-by-pitch:
   opponent's — by tapping players to add them in order (tap a slot to remove).
 - The scoreboard then shows the **current batter by name** (number, slot, and
   handedness), and advances through the order automatically as at-bats end. A
-  **Batting: Us / Them** toggle switches which lineup is at the plate, and the
-  batter's handedness auto-fills the R/L split used in stats. (Switch hitters
-  keep a manual R/L choice; a "Next ›" button nudges the order for subs.)
+  **Batting** toggle switches which lineup is at the plate, and the batter's
+  handedness auto-fills the R/L split used in stats. (Switch hitters keep a
+  manual R/L choice; a "Next ›" button nudges the order for subs.)
+- Because you're usually scouting your **own** pitcher, the opponent's lineup
+  bats by default — flip the toggle to "Us" if you're charting an opposing
+  pitcher facing Carrollton instead.
+- A line summary under the scoreboard shows the live pitching line, with an
+  **End Game** button to finalize.
 - A **tappable strike zone** (the inner 3×3 squares are the strike zone, the
   outer ring is out-of-zone, just like the screenshot). Tap the spot where the
   pitch crossed the plate.

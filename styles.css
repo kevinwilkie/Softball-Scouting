@@ -437,6 +437,50 @@ button { font-family: inherit; }
 .tend-meta { color: var(--text-dim); font-size: 11px; white-space: nowrap; }
 .tend-mix { color: var(--text-dim); font-size: 13px; margin-top: 3px; }
 
+/* tappable list card (pitcher -> profile) */
+.card-tappable { cursor: pointer; }
+.card-tappable:active { transform: scale(0.995); }
+.card-chevron {
+  display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
+  gap: 4px; color: var(--text-faint); font-size: 22px; align-self: center;
+}
+.card-chevron .card-count {
+  font-size: 11px; font-weight: 700; color: var(--text-dim);
+  background: var(--bg-elev-2); padding: 2px 7px; border-radius: 999px;
+}
+
+/* pitcher profile (player card) */
+.profile-head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.profile-badge {
+  width: 56px; height: 56px; flex-shrink: 0;
+  display: grid; place-items: center; border-radius: 14px;
+  background: var(--bg-elev-2); font-weight: 800; font-size: 20px;
+}
+.profile-badge.hand-L { color: var(--red); }
+.profile-badge.hand-R { color: var(--blue); }
+
+.line-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.line-stat { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 4px; text-align: center; }
+.line-stat .ls-val { font-size: 18px; font-weight: 800; }
+.line-stat .ls-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+.gamelog-row { padding: 11px 0; border-bottom: 1px solid var(--border); }
+.gamelog-row:last-child { border: none; padding-bottom: 0; }
+.glr-top { display: flex; align-items: center; justify-content: space-between; }
+.glr-opp { font-weight: 700; font-size: 15px; }
+.glr-date { font-size: 12px; margin-top: 1px; }
+.glr-line { font-size: 13px; color: var(--text-dim); margin-top: 5px; }
+.glr-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+.badge { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.5px; }
+.badge-final { background: rgba(46,194,126,0.18); color: var(--green); }
+.badge-live { background: rgba(232,181,58,0.18); color: var(--yellow); }
+
+/* end-game bar under scoreboard */
+.endgame-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; }
+.endgame-bar .eg-line { display: flex; flex-direction: column; gap: 2px; font-size: 14px; font-weight: 600; }
+.endgame-bar .eg-line .muted { font-size: 11px; font-weight: 500; }
+
 /* two fields side by side (number + position) */
 .row-2 { display: flex; gap: 10px; }
 .row-2 .field { flex: 1; }
