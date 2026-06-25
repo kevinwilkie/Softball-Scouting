@@ -206,6 +206,31 @@ button { font-family: inherit; }
   padding: 14px;
   margin-bottom: 14px;
 }
+.sb-score {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.score-team { text-align: center; flex: 1; }
+.score-team .st-name {
+  font-size: 11px; font-weight: 800; color: var(--text-dim);
+  letter-spacing: 0.5px; margin-bottom: 4px;
+}
+.score-ctrl { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.score-num { font-size: 30px; font-weight: 800; min-width: 34px; line-height: 1; }
+.score-btn {
+  width: 30px; height: 30px;
+  border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg-elev-2); color: var(--text);
+  font-size: 18px; font-weight: 700; line-height: 1; cursor: pointer;
+}
+.score-btn:active { transform: scale(0.92); }
+.score-vs { color: var(--text-faint); font-size: 18px; font-weight: 700; padding-bottom: 4px; }
+.glr-score { font-size: 12px; font-weight: 700; color: var(--text-dim); margin-left: auto; margin-right: 8px; }
 .sb-top {
   display: flex;
   justify-content: space-between;

@@ -23,12 +23,15 @@ own staff.
 
 ### Player card (pitcher results)
 Selecting a pitcher's name opens their card:
-- **Season totals** across all their games — IP, batters faced, K, BB, H,
-  strike %, whiff %, and average-against.
-- **Game log** — one row per game with that game's pitching line
-  (e.g. "5.1 IP · 7 K · 1 BB · 3 H · 61% strikes"), a Final / In-progress
-  badge, a **View stats** button (jumps to that game's heat map and tendencies)
-  and a **Resume** button for games still in progress.
+- **Season totals** across all their games — IP, runs allowed, K, BB, H,
+  batters faced, strike %, whiff %, and average-against.
+- **Game log** — one row per game with the final score (CHS vs opponent) and
+  that game's pitching line (e.g. "5.1 IP · 7 K · 1 BB · 3 H · 2 R"), a Final /
+  In-progress badge, a **View stats** button (jumps to that game's heat map and
+  tendencies) and a **Resume** button for games still in progress.
+
+Runs allowed come from the live score you keep during the game (the opponent's
+runs), so the card reflects the actual scoreboard.
 
 When a game is over, tap **End Game** on the scoreboard to mark it *Final* — its
 results are saved to the pitcher's card automatically.
@@ -46,8 +49,9 @@ pool for *their* batting order during a game.
 Start a game by choosing the **scouting pitcher** and the **opponent** (picking
 a pitcher that's linked to a team auto-selects that opponent). Then track the
 game pitch-by-pitch:
-- A **scoreboard** styled like a broadcast overlay — balls, strikes, outs,
-  inning, current batter, and tappable bases.
+- A **scoreboard** styled like a broadcast overlay — the running **score**
+  (CHS vs opponent, with +/− buttons to keep it up to date), balls, strikes,
+  outs, inning, current batter, and tappable bases.
 - A **Lineups** panel where you set both batting orders — your hitters and the
   opponent's — by tapping players to add them in order (tap a slot to remove).
 - The scoreboard then shows the **current batter by name** (number, slot, and

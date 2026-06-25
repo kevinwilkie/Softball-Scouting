@@ -578,6 +578,7 @@ function createGame(pitcherId, opponentId, date) {
     oppLineup: [],        // ordered opponent player ids
     myIdx: 0,             // current spot in my order
     oppIdx: 0,            // current spot in opponent order
+    score: { me: 0, opp: 0 }, // running score: Carrollton vs opponent
     final: false          // marked when the game is over
   };
   state.games.push(g);
@@ -709,10 +710,11 @@ function clampIdx(g, side) {
 // Live pitching line + finalize control under the scoreboard.
 function endGameBar(g, p) {
   const line = pitchingLine(g.pitches);
+  const sc = gameScore(g);
   return el('div', { class: 'card endgame-bar' }, [
     el('div', { class: 'eg-line' }, [
-      el('span', { text: `${line.ip} IP · ${line.k} K · ${line.bb} BB · ${line.h} H` }),
-      el('span', { class: 'muted', text: `${line.pitches} P · ${line.strikePct}% strikes` })
+      el('span', { text: `${line.ip} IP · ${line.k} K · ${line.bb} BB · ${line.h} H · ${sc.opp} R` }),
+      el('span', { class: 'muted', text: `CHS ${sc.me}–${sc.opp} ${gameOpponentName(g)} · ${line.pitches} P` })
     ]),
     g.final
       ? el('button', { class: 'btn btn-sm', onclick: () => { g.final = false; save(); render(); toast('Game reopened'); } }, 'Reopen')
@@ -787,6 +789,35 @@ function dots(n, total, fillClass) {
   return row;
 }
 
+function gameScore(g) {
+  const s = g.score || { me: 0, opp: 0 };
+  return { me: s.me || 0, opp: s.opp || 0 };
+}
+
+function adjustScore(g, side, delta) {
+  if (!g.score) g.score = { me: 0, opp: 0 };
+  g.score[side] = Math.max(0, (g.score[side] || 0) + delta);
+  save();
+  render();
+}
+
+function scoreStrip(g) {
+  const sc = gameScore(g);
+  const teamCell = (side, name) => el('div', { class: 'score-team' }, [
+    el('div', { class: 'st-name', text: name }),
+    el('div', { class: 'score-ctrl' }, [
+      el('button', { class: 'score-btn', onclick: () => adjustScore(g, side, -1) }, '−'),
+      el('span', { class: 'score-num', text: String(sc[side]) }),
+      el('button', { class: 'score-btn', onclick: () => adjustScore(g, side, 1) }, '+')
+    ])
+  ]);
+  return el('div', { class: 'sb-score' }, [
+    teamCell('me', 'CHS'),
+    el('div', { class: 'score-vs', text: '–' }),
+    teamCell('opp', (gameOpponentName(g) || 'OPP').slice(0, 10).toUpperCase())
+  ]);
+}
+
 function scoreboard(g) {
   // bases
   const basesEl = el('div', { class: 'bases' });
@@ -798,6 +829,7 @@ function scoreboard(g) {
   });
 
   return el('div', { class: 'scoreboard' }, [
+    scoreStrip(g),
     el('div', { class: 'sb-top' }, [
       el('div', { class: 'sb-stat' }, [el('span', { class: 'sb-label', text: 'BALLS' }), dots(g.balls, 4, 'fill-green')]),
       el('div', { class: 'sb-stat' }, [el('span', { class: 'sb-label', text: 'STRIKES' }), dots(g.strikes, 3, 'fill-yellow')]),
@@ -1156,13 +1188,14 @@ function renderPitcherProfile(p) {
   // Season totals across all of this pitcher's games.
   const allPitches = games.flatMap(g => g.pitches);
   const tot = pitchingLine(allPitches);
+  const runsAllowed = games.reduce((sum, g) => sum + gameScore(g).opp, 0);
   wrap.appendChild(el('div', { class: 'card' }, [
     el('h3', { text: 'Season Totals', style: { margin: '0 0 4px' } }),
     el('div', { class: 'muted', style: { marginBottom: '8px' }, text: `${games.length} game${games.length === 1 ? '' : 's'} · ${tot.pitches} pitches` }),
     el('div', { class: 'line-grid' }, [
-      lineStat('IP', tot.ip), lineStat('BF', tot.bf), lineStat('K', tot.k),
-      lineStat('BB', tot.bb), lineStat('H', tot.h), lineStat('Strike%', tot.strikePct + '%'),
-      lineStat('Whiff%', tot.whiffPct + '%'), lineStat('AVG', tot.baa)
+      lineStat('IP', tot.ip), lineStat('R', runsAllowed), lineStat('K', tot.k),
+      lineStat('BB', tot.bb), lineStat('H', tot.h), lineStat('BF', tot.bf),
+      lineStat('Strike%', tot.strikePct + '%'), lineStat('Whiff%', tot.whiffPct + '%'), lineStat('AVG', tot.baa)
     ])
   ]));
 
@@ -1170,15 +1203,17 @@ function renderPitcherProfile(p) {
   const log = el('div', { class: 'card' }, [el('h3', { text: 'Game Log', style: { margin: '0 0 10px' } })]);
   games.forEach(g => {
     const line = pitchingLine(g.pitches);
+    const sc = gameScore(g);
     log.appendChild(el('div', { class: 'gamelog-row' }, [
       el('div', { class: 'glr-top' }, [
         el('span', { class: 'glr-opp', text: `vs ${gameOpponentName(g)}` }),
+        el('span', { class: 'glr-score', text: `CHS ${sc.me}–${sc.opp}` }),
         g.final
           ? el('span', { class: 'badge badge-final', text: 'Final' })
           : el('span', { class: 'badge badge-live', text: 'In progress' })
       ]),
       el('div', { class: 'glr-date muted', text: g.date }),
-      el('div', { class: 'glr-line', text: `${line.ip} IP · ${line.k} K · ${line.bb} BB · ${line.h} H · ${line.strikePct}% strikes` }),
+      el('div', { class: 'glr-line', text: `${line.ip} IP · ${line.k} K · ${line.bb} BB · ${line.h} H · ${sc.opp} R` }),
       el('div', { class: 'glr-actions' }, [
         el('button', { class: 'btn btn-sm', onclick: () => {
           state.ui.statsPitcherId = p.id; state.ui.statsGameId = g.id; state.ui.openPitcherId = null;
