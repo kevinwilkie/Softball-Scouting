@@ -1290,7 +1290,12 @@ function atBatRunsInfo(g, resultId) {
     : resultId === 'in_play_out' ? 0
     : occ.filter(p => p >= 2).length;
   smart = Math.max(forced, Math.min(smart, max));
-  const needsPrompt = hasScoringPos && max > forced;
+  // Ask whenever the run count is discretionary AND it's a play where holding
+  // a runner is realistic: an extra-base hit (incl. a runner from first), or a
+  // runner already in scoring position. Routine singles with a runner only on
+  // first don't prompt.
+  const isXBH = resultId === 'double' || resultId === 'triple';
+  const needsPrompt = max > forced && (hasScoringPos || isXBH);
   return { needsPrompt, autoRuns: smart, min: forced, max, smart, onBase };
 }
 
