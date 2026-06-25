@@ -92,6 +92,7 @@ const defaultState = () => ({
   pitchers: [],     // {id, name, classification, hand, pitches:[], opponentId?}
   hitters: [],      // {id, name, bats, number, position}  (Carrollton's hitters)
   opponents: [],    // {id, name, players:[{id, name, bats, number, position, isPitcher}]}
+  schedule: [],     // {id, date, time, opponentId, opponentName, homeAway, location, notes, gameId}
   games: [],        // {id, date, opponentId, pitcherId, pitches:[...], ...lineups}
   activeGameId: null,
   ui: { tab: 'pitchers', statsPitcherId: null, statsGameId: null }
@@ -107,6 +108,7 @@ function load() {
       // Migrations for data saved by earlier versions.
       if (!Array.isArray(s.hitters)) s.hitters = [];
       if (!Array.isArray(s.opponents)) s.opponents = [];
+      if (!Array.isArray(s.schedule)) s.schedule = [];
       if (s.ui && s.ui.tab === 'roster') s.ui.tab = 'pitchers';
       return s;
     }
@@ -202,6 +204,7 @@ function render() {
     pitchers: renderRoster,
     hitters: renderHitters,
     opponents: renderOpponents,
+    schedule: renderSchedule,
     game: renderGame,
     stats: renderStats
   };
@@ -551,6 +554,215 @@ function openPlayerEditor({ title, draft, showPitcher, onSave }) {
   openModal(el('div', {}, children));
 }
 
+/* ============================ SCHEDULE TAB ============================ */
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+function scheduleOpponentName(e) {
+  return (e.opponentId && opponentById(e.opponentId)?.name) || e.opponentName || 'TBD';
+}
+
+function renderSchedule() {
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'section-head' }, [
+    el('h2', { text: 'Schedule' }),
+    el('div', {}, [
+      el('button', { class: 'btn btn-sm', onclick: openScheduleImport }, 'Import'),
+      el('button', { class: 'btn btn-primary btn-sm', style: { marginLeft: '8px' }, onclick: () => openScheduleForm() }, '+ Add')
+    ])
+  ]));
+
+  if (!state.schedule.length) {
+    wrap.appendChild(el('div', { class: 'empty' }, [
+      el('p', { text: '📅' }),
+      el('p', { text: 'No games scheduled.' }),
+      el('p', { class: 'muted', text: 'Add games one at a time, or Import a whole schedule from a file or paste.' })
+    ]));
+    return wrap;
+  }
+
+  const today = todayISO();
+  const sorted = [...state.schedule].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const upcoming = sorted.filter(e => (e.date || '') >= today);
+  const past = sorted.filter(e => (e.date || '') < today).reverse();
+
+  if (upcoming.length) {
+    wrap.appendChild(el('div', { class: 'sched-group-label', text: 'Upcoming' }));
+    upcoming.forEach(e => wrap.appendChild(scheduleCard(e)));
+  }
+  if (past.length) {
+    wrap.appendChild(el('div', { class: 'sched-group-label', text: 'Past' }));
+    past.forEach(e => wrap.appendChild(scheduleCard(e, true)));
+  }
+  return wrap;
+}
+
+function scheduleCard(e, isPast) {
+  const linked = e.gameId && state.games.find(g => g.id === e.gameId);
+  const ha = e.homeAway === 'away' ? '@' : 'vs';
+  const dateStr = formatSchedDate(e.date) + (e.time ? ` · ${e.time}` : '');
+
+  const actions = [];
+  if (linked) {
+    const sc = gameScore(linked);
+    actions.push(el('span', { class: 'sched-result', text: `CHS ${sc.me}–${sc.opp}${linked.final ? ' (F)' : ''}` }));
+    actions.push(el('button', { class: 'btn btn-sm', onclick: () => { state.activeGameId = linked.id; setTab('game'); } }, 'Open'));
+  } else {
+    actions.push(el('button', { class: 'btn btn-sm btn-primary', onclick: () => logFromSchedule(e) }, 'Log game'));
+  }
+  actions.push(el('button', { class: 'btn btn-sm', onclick: () => openScheduleForm(e) }, 'Edit'));
+
+  return el('div', { class: 'card sched-card' + (isPast ? ' past' : '') }, [
+    el('div', { class: 'sched-main' }, [
+      el('div', { class: 'sched-date', text: dateStr }),
+      el('div', { class: 'sched-opp', text: `${ha} ${scheduleOpponentName(e)}` }),
+      e.location ? el('div', { class: 'sched-loc muted', text: e.location }) : null,
+      e.notes ? el('div', { class: 'sched-loc muted', text: e.notes }) : null
+    ]),
+    el('div', { class: 'sched-actions' }, actions)
+  ]);
+}
+
+function formatSchedDate(d) {
+  if (!d) return 'TBD';
+  const parts = d.split('-');
+  if (parts.length !== 3) return d;
+  const dt = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+  return dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function logFromSchedule(e) {
+  state.ui.prefill = { opponentId: e.opponentId || null, date: e.date, scheduleId: e.id };
+  setTab('game');
+}
+
+function openScheduleForm(existing) {
+  const draft = existing
+    ? JSON.parse(JSON.stringify(existing))
+    : { id: uid(), date: todayISO(), time: '', opponentId: null, opponentName: '', homeAway: 'home', location: '', notes: '' };
+
+  const dateInput = el('input', { type: 'date', value: draft.date });
+  const timeInput = el('input', { type: 'text', value: draft.time, placeholder: 'e.g. 5:30 PM', autocomplete: 'off' });
+  const oppSelect = el('select', { onchange: e => { draft.opponentId = e.target.value || null; } }, [
+    el('option', { value: '' }, '— Select team —'),
+    ...state.opponents.map(o => el('option', { value: o.id, selected: o.id === draft.opponentId }, o.name))
+  ]);
+  const oppNameInput = el('input', { type: 'text', value: draft.opponentName || '', placeholder: 'or type a team name', autocomplete: 'off' });
+  const locInput = el('input', { type: 'text', value: draft.location || '', placeholder: 'Field / location', autocomplete: 'off' });
+  const notesInput = el('input', { type: 'text', value: draft.notes || '', placeholder: 'Notes (optional)', autocomplete: 'off' });
+
+  const haSeg = el('div', { class: 'segmented' }, [['home', 'Home (vs)'], ['away', 'Away (@)']].map(([v, lbl]) =>
+    el('div', {
+      class: 'chip' + (draft.homeAway === v ? ' selected' : ''),
+      onclick: ev => { draft.homeAway = v; haSeg.querySelectorAll('.chip').forEach(c => c.classList.remove('selected')); ev.currentTarget.classList.add('selected'); }
+    }, lbl)));
+
+  openModal(el('div', {}, [
+    el('h3', { text: existing ? 'Edit Game' : 'Add Game' }),
+    el('div', { class: 'row-2' }, [
+      el('div', { class: 'field' }, [el('label', { text: 'Date' }), dateInput]),
+      el('div', { class: 'field' }, [el('label', { text: 'Time' }), timeInput])
+    ]),
+    el('div', { class: 'field' }, [el('label', { text: 'Opponent' }), oppSelect]),
+    state.opponents.length ? null : el('div', { class: 'field' }, [oppNameInput]),
+    el('div', { class: 'field' }, [el('label', { text: 'Home / Away' }), haSeg]),
+    el('div', { class: 'field' }, [el('label', { text: 'Location' }), locInput]),
+    el('div', { class: 'field' }, [el('label', { text: 'Notes' }), notesInput]),
+    el('div', { style: { display: 'flex', gap: '10px', marginTop: '8px' } }, [
+      existing
+        ? el('button', { class: 'btn btn-danger', onclick: () => { deleteScheduleEntry(existing); closeModal(); } }, 'Delete')
+        : el('button', { class: 'btn btn-block', onclick: closeModal }, 'Cancel'),
+      el('button', { class: 'btn btn-primary btn-block', onclick: () => {
+        draft.date = dateInput.value;
+        draft.time = timeInput.value.trim();
+        draft.opponentName = state.opponents.length ? '' : oppNameInput.value.trim();
+        draft.location = locInput.value.trim();
+        draft.notes = notesInput.value.trim();
+        const idx = state.schedule.findIndex(s => s.id === draft.id);
+        if (idx >= 0) state.schedule[idx] = draft; else state.schedule.push(draft);
+        save(); closeModal(); render();
+      } }, 'Save')
+    ])
+  ]));
+}
+
+function deleteScheduleEntry(e) {
+  if (!confirm('Remove this game from the schedule?')) return;
+  state.schedule = state.schedule.filter(s => s.id !== e.id);
+  save();
+  render();
+}
+
+// Import: paste rows or pick a .csv/.txt file. One game per line:
+// date, opponent, home/away, time, location
+function openScheduleImport() {
+  const ta = el('textarea', { class: 'import-ta', placeholder:
+    '2026-03-14, Bremen, home, 5:30 PM, Carrollton HS\n2026-03-17, Villa Rica, away, 6:00 PM' });
+  const fileInput = el('input', { type: 'file', accept: '.csv,.txt,text/csv,text/plain', onchange: ev => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => { ta.value = String(reader.result || ''); };
+    reader.readAsText(f);
+  } });
+
+  openModal(el('div', {}, [
+    el('h3', { text: 'Import Schedule' }),
+    el('p', { class: 'sheet-sub', text: 'One game per line: date, opponent, home/away, time, location. Commas or tabs.' }),
+    el('div', { class: 'field' }, [el('label', { text: 'Upload a .csv / .txt file' }), fileInput]),
+    el('div', { class: 'field' }, [el('label', { text: 'Or paste rows' }), ta]),
+    el('div', { style: { display: 'flex', gap: '10px', marginTop: '8px' } }, [
+      el('button', { class: 'btn btn-block', onclick: closeModal }, 'Cancel'),
+      el('button', { class: 'btn btn-primary btn-block', onclick: () => {
+        const rows = parseScheduleText(ta.value);
+        if (!rows.length) { toast('Nothing to import'); return; }
+        rows.forEach(r => state.schedule.push(r));
+        save(); closeModal(); render();
+        toast(`Imported ${rows.length} game${rows.length === 1 ? '' : 's'}`);
+      } }, 'Import')
+    ])
+  ]));
+}
+
+function parseScheduleText(text) {
+  const out = [];
+  (text || '').split(/\r?\n/).forEach(line => {
+    const raw = line.trim();
+    if (!raw) return;
+    const cols = raw.split(/\t|,/).map(c => c.trim());
+    const date = normalizeDate(cols[0] || '');
+    if (!date) return; // need at least a parseable date
+    const oppName = cols[1] || '';
+    const matched = state.opponents.find(o => o.name.toLowerCase() === oppName.toLowerCase());
+    const haRaw = (cols[2] || '').toLowerCase();
+    const homeAway = (haRaw.includes('away') || haRaw === '@' || haRaw === 'a') ? 'away' : 'home';
+    out.push({
+      id: uid(),
+      date,
+      time: cols[3] || '',
+      opponentId: matched ? matched.id : null,
+      opponentName: matched ? '' : oppName,
+      homeAway,
+      location: cols[4] || '',
+      notes: ''
+    });
+  });
+  return out;
+}
+
+function normalizeDate(s) {
+  s = (s || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?$/);
+  if (m) {
+    let [, mo, d, y] = m;
+    if (!y) y = String(new Date().getFullYear());
+    else if (y.length === 2) y = '20' + y;
+    return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  return '';
+}
+
 /* ============================ GAME TAB ================================ */
 
 function newAtBat() {
@@ -740,6 +952,13 @@ function renderGamePicker() {
     state.pitchers.map(p => el('option', { value: p.id }, `${p.name} (${p.hand})`)));
   const dateInput = el('input', { type: 'date', value: new Date().toISOString().slice(0, 10) });
 
+  // Pre-fill from a "Log game" tap on the Schedule tab.
+  const prefill = state.ui.prefill;
+  if (prefill) {
+    if (prefill.opponentId) oppSelect.value = prefill.opponentId;
+    if (prefill.date) dateInput.value = prefill.date;
+  }
+
   // Picking a pitcher with a team association auto-selects that opponent.
   pitcherSelect.addEventListener('change', () => {
     const p = pitcherById(pitcherSelect.value);
@@ -758,7 +977,14 @@ function renderGamePicker() {
     el('div', { class: 'field' }, [el('label', { text: 'Date' }), dateInput]),
     el('button', { class: 'btn btn-primary btn-block', onclick: () => {
       if (!pitcherSelect.value) { toast('Pick a pitcher'); return; }
-      createGame(pitcherSelect.value, oppSelect.value || null, dateInput.value);
+      const g = createGame(pitcherSelect.value, oppSelect.value || null, dateInput.value);
+      // Link back to the schedule entry this was launched from, if any.
+      if (prefill && prefill.scheduleId) {
+        const se = state.schedule.find(s => s.id === prefill.scheduleId);
+        if (se) se.gameId = g.id;
+      }
+      state.ui.prefill = null;
+      save();
       render();
     } }, 'Start Game')
   ]));
@@ -1242,9 +1468,76 @@ function renderStats() {
   const wrap = el('div');
   wrap.appendChild(el('div', { class: 'section-head' }, [el('h2', { text: 'Stats' })]));
 
-  if (!state.pitchers.length || !state.games.length) {
+  if (!state.pitchers.length) {
     wrap.appendChild(el('div', { class: 'empty' }, [
-      el('p', { text: 'No game data yet.' }),
+      el('p', { text: 'No pitchers yet.' }),
+      el('button', { class: 'btn btn-primary', onclick: () => setTab('pitchers') }, 'Add a Pitcher')
+    ]));
+    return wrap;
+  }
+
+  if (!state.ui.statsMode) state.ui.statsMode = 'season';
+  wrap.appendChild(el('div', { class: 'segmented', style: { marginBottom: '14px' } },
+    [['season', 'Season'], ['scouting', 'Scouting']].map(([k, lbl]) =>
+      el('div', {
+        class: 'chip' + (state.ui.statsMode === k ? ' selected' : ''),
+        onclick: () => { state.ui.statsMode = k; save(); render(); }
+      }, lbl))));
+
+  wrap.appendChild(state.ui.statsMode === 'season' ? renderSeasonStats() : renderScoutingStats());
+  return wrap;
+}
+
+// Team-wide, season-long pitching stats for all of my pitchers.
+function renderSeasonStats() {
+  const wrap = el('div');
+  const cols = ['Pitcher', 'G', 'IP', 'K', 'BB', 'H', 'R', 'AVG', 'K%', 'Whiff%'];
+  const head = el('tr', {}, cols.map((c, i) => el('th', { class: i === 0 ? 'col-name' : '', text: c })));
+  const body = el('tbody');
+
+  state.pitchers.forEach(p => {
+    const games = pitcherGames(p.id);
+    const line = pitchingLine(games.flatMap(g => g.pitches));
+    const R = games.reduce((s, g) => s + gameScore(g).opp, 0);
+    const kPct = line.bf ? Math.round((line.k / line.bf) * 100) : 0;
+    body.appendChild(el('tr', { class: 'season-row', onclick: () => openPitcherProfile(p) }, [
+      el('td', { class: 'col-name', text: p.name }),
+      el('td', { text: String(games.length) }),
+      el('td', { text: line.ip }),
+      el('td', { text: String(line.k) }),
+      el('td', { text: String(line.bb) }),
+      el('td', { text: String(line.h) }),
+      el('td', { text: String(R) }),
+      el('td', { text: line.baa }),
+      el('td', { text: kPct + '%' }),
+      el('td', { text: line.whiffPct + '%' })
+    ]));
+  });
+
+  // Team totals row.
+  const allP = state.games.flatMap(g => g.pitches);
+  const tl = pitchingLine(allP);
+  const tR = state.games.reduce((s, g) => s + gameScore(g).opp, 0);
+  body.appendChild(el('tr', { class: 'season-total' }, [
+    el('td', { class: 'col-name', text: 'Team' }),
+    el('td', { text: String(state.games.length) }),
+    el('td', { text: tl.ip }), el('td', { text: String(tl.k) }), el('td', { text: String(tl.bb) }),
+    el('td', { text: String(tl.h) }), el('td', { text: String(tR) }), el('td', { text: tl.baa }),
+    el('td', { text: (tl.bf ? Math.round((tl.k / tl.bf) * 100) : 0) + '%' }),
+    el('td', { text: tl.whiffPct + '%' })
+  ]));
+
+  wrap.appendChild(el('div', { class: 'season-wrap' }, [el('table', { class: 'season-table' }, [el('thead', {}, [head]), body])]));
+  wrap.appendChild(el('p', { class: 'muted', style: { marginTop: '10px', fontSize: '12px' },
+    text: 'Season pitching totals across all logged games. Tap a pitcher for their full card. R = runs allowed.' }));
+  return wrap;
+}
+
+function renderScoutingStats() {
+  const wrap = el('div');
+  if (!state.games.length) {
+    wrap.appendChild(el('div', { class: 'empty' }, [
+      el('p', { text: 'No games logged yet.' }),
       el('p', { class: 'muted', text: 'Log some pitches to see zone tendencies.' })
     ]));
     return wrap;

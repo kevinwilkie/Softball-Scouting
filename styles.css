@@ -79,11 +79,12 @@ main {
 }
 .tab-btn {
   flex: 1;
+  min-width: 0;
   background: none;
   border: none;
   color: var(--text-faint);
-  padding: 10px 0 8px;
-  font-size: 11px;
+  padding: 9px 0 7px;
+  font-size: 10px;
   font-weight: 600;
   display: flex;
   flex-direction: column;
@@ -91,7 +92,8 @@ main {
   gap: 3px;
   cursor: pointer;
 }
-.tab-btn .tab-icon { font-size: 20px; line-height: 1; }
+.tab-btn span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.tab-btn .tab-icon { font-size: 18px; line-height: 1; }
 .tab-btn.active { color: var(--text); }
 .tab-btn.active .tab-icon { color: var(--accent); }
 
@@ -509,6 +511,36 @@ button { font-family: inherit; }
 /* two fields side by side (number + position) */
 .row-2 { display: flex; gap: 10px; }
 .row-2 .field { flex: 1; }
+
+/* schedule */
+.sched-group-label {
+  font-size: 12px; font-weight: 700; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.5px; margin: 6px 0 10px;
+}
+.sched-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.sched-card.past { opacity: 0.62; }
+.sched-main { flex: 1; min-width: 0; }
+.sched-date { font-size: 12px; color: var(--text-dim); font-weight: 600; }
+.sched-opp { font-size: 16px; font-weight: 700; margin-top: 1px; }
+.sched-loc { font-size: 12px; margin-top: 2px; }
+.sched-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.sched-result { font-size: 12px; font-weight: 700; color: var(--text-dim); }
+.import-ta {
+  width: 100%; min-height: 120px; resize: vertical;
+  padding: 12px; font-size: 14px; font-family: ui-monospace, monospace;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text);
+}
+
+/* season stats table */
+.season-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: var(--radius); }
+.season-table { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
+.season-table th, .season-table td { padding: 9px 10px; text-align: right; }
+.season-table th { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; background: var(--bg-elev); position: sticky; top: 0; }
+.season-table .col-name { text-align: left; font-weight: 700; }
+.season-table tbody tr { border-top: 1px solid var(--border); cursor: pointer; }
+.season-table .season-row:active { background: var(--bg-elev-2); }
+.season-table .season-total { border-top: 2px solid var(--border); font-weight: 700; background: var(--bg-elev); }
+.season-table .season-total td { color: var(--text); }
 
 /* lineup setup */
 .lineup-card { padding: 0; overflow: hidden; }

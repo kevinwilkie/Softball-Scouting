@@ -45,6 +45,21 @@ Opponent teams, each with its own roster. Open a team to add players (name,
 number, bats, position, and a "Pitcher" flag). The opponent's roster is the
 pool for *their* batting order during a game.
 
+### Schedule tab
+Your team's game schedule. Add games one at a time (date, time, opponent,
+home/away, location, notes) or **Import** a whole schedule — upload a `.csv` /
+`.txt` file or paste rows, one game per line:
+
+```
+2026-03-14, Bremen, home, 5:30 PM, Carrollton HS
+2026-03-17, Villa Rica, away, 6:00 PM
+```
+
+Dates accept `YYYY-MM-DD` or `M/D/YYYY`, and opponent names that match a team
+on the Opponents tab are linked automatically. Upcoming and past games are
+grouped; tap **Log game** on an entry to jump straight into logging it (the
+opponent and date are pre-filled), and once logged the entry shows the score.
+
 ### Log Game tab
 Start a game by choosing the **scouting pitcher** and the **opponent** (picking
 a pitcher that's linked to a team auto-selects that opponent). Then track the
@@ -75,6 +90,13 @@ game pitch-by-pitch:
 You can run multiple games and switch between them. Each game is saved.
 
 ### Stats tab
+Two modes via the toggle at the top:
+
+**Season** — a team-wide table of every pitcher's season-long line (games, IP,
+K, BB, H, runs allowed, average-against, strikeout %, and whiff %), with a team
+totals row. Tap any pitcher to open their full player card.
+
+**Scouting** — per-pitcher analysis for the selected pitcher:
 - A **strike-zone heat map** (blue → red, matching the screenshot's style) with
   a metric toggle:
   - **Frequency** — where she throws most
