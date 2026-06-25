@@ -1,5 +1,5 @@
 /* Minimal offline cache so the app works at the field with no signal. */
-const CACHE = 'chs-scout-v1';
+const CACHE = 'chs-scout-v2';
 const ASSETS = [
   './',
   './index.html',

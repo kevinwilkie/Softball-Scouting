@@ -32,11 +32,19 @@ Track a live game pitch-by-pitch:
 You can run multiple games and switch between them. Each game is saved.
 
 ### Stats tab
-- A **location heat map** over the strike zone (blue → red by pitch frequency),
-  matching the screenshot's style.
-- A **summary** — in-zone %, strike %, swing-and-miss %, balls, hits, and
-  first-pitch-strike %.
+- A **strike-zone heat map** (blue → red, matching the screenshot's style) with
+  a metric toggle:
+  - **Frequency** — where she throws most
+  - **Whiff %** — where she misses bats (whiffs ÷ swings per zone)
+  - **Avg against** — where she gets hit (batting average on balls in play per
+    zone) — the most actionable "where is she beatable?" view
+- A **summary** — in-zone %, strike %, whiff rate, first-pitch-strike %, hits
+  allowed (with extra-base hits), and overall average against.
 - A **pitch mix** breakdown by pitch type.
+
+Pitch results are logged with full detail — ball, called strike, swing & miss,
+foul, hit-by-pitch, out, and single / double / triple / home run — which is
+what powers the whiff and average-against views.
 
 Filter stats by pitcher and by individual game (or all games combined).
 

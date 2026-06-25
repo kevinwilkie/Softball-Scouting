@@ -40,22 +40,38 @@ const ZONES = [
   { id: 16, kind: 'ball',   col: '4 / 6', row: '5 / 6', label: '' },
 ];
 
-// Pitch result outcomes and how they affect the count.
+// Pitch result outcomes. `group` drives the entry-sheet layout ("no contact"
+// vs "ball in play"); the count and stat logic key off `id`.
 const RESULTS = [
-  { id: 'ball',          label: 'Ball',          tone: 'ball'   },
-  { id: 'called_strike', label: 'Called Strike', tone: 'strike' },
-  { id: 'swing_strike',  label: 'Swing & Miss',  tone: 'strike' },
-  { id: 'foul',          label: 'Foul',          tone: 'foul'   },
-  { id: 'in_play_out',   label: 'In Play — Out', tone: 'out'    },
-  { id: 'hit',           label: 'Hit',           tone: 'hit'    },
-  { id: 'hbp',           label: 'Hit By Pitch',  tone: 'ball'   },
+  // No contact / count results
+  { id: 'ball',          label: 'Ball',          tone: 'ball',   group: 'nc' },
+  { id: 'called_strike', label: 'Called Strike', tone: 'strike', group: 'nc' },
+  { id: 'swing_strike',  label: 'Swing & Miss',  tone: 'strike', group: 'nc' },
+  { id: 'foul',          label: 'Foul',          tone: 'foul',   group: 'nc' },
+  { id: 'hbp',           label: 'Hit By Pitch',  tone: 'ball',   group: 'nc' },
+  // Ball put in play
+  { id: 'in_play_out',   label: 'Out',           tone: 'out',    group: 'ip' },
+  { id: 'single',        label: 'Single',        tone: 'hit',    group: 'ip' },
+  { id: 'double',        label: 'Double',        tone: 'hit',    group: 'ip' },
+  { id: 'triple',        label: 'Triple',        tone: 'hit',    group: 'ip' },
+  { id: 'hr',            label: 'Home Run',      tone: 'hit',    group: 'ip' },
 ];
+
+// Result classification sets (used by count logic and stats). 'hit' is a
+// legacy id from before extra-base detail; it's treated as a generic hit.
+const HIT_RESULTS     = ['single', 'double', 'triple', 'hr', 'hit'];
+const IN_PLAY_RESULTS = HIT_RESULTS.concat(['in_play_out']);
+const SWING_RESULTS   = IN_PLAY_RESULTS.concat(['swing_strike', 'foul']);
 
 const RESULT_TONE = {
   ball: 'res-ball', called_strike: 'res-strike', swing_strike: 'res-strike',
-  foul: 'res-foul', in_play_out: 'res-out', hit: 'res-hit', hbp: 'res-ball'
+  foul: 'res-foul', in_play_out: 'res-out', hbp: 'res-ball',
+  single: 'res-hit', double: 'res-hit', triple: 'res-hit', hr: 'res-hit', hit: 'res-hit'
 };
-const RESULT_LABEL = Object.fromEntries(RESULTS.map(r => [r.id, r.label]));
+const RESULT_LABEL = Object.assign(
+  Object.fromEntries(RESULTS.map(r => [r.id, r.label])),
+  { hit: 'Hit' }
+);
 
 /* ----------------------------- State / storage ------------------------- */
 
@@ -415,7 +431,7 @@ function openPitchEntry(g, zoneId, zoneKind) {
         onclick: () => { draft.pitchType = pt; openModal(buildBody()); }
       }, pt)));
 
-    const resGrid = el('div', { class: 'opt-grid' }, RESULTS.map(r =>
+    const mkRes = group => el('div', { class: 'opt-grid' }, RESULTS.filter(r => r.group === group).map(r =>
       el('div', {
         class: `opt tone-${r.tone}`,
         onclick: () => commitPitch(g, draft.zoneId, draft.pitchType, r.id)
@@ -428,7 +444,9 @@ function openPitchEntry(g, zoneId, zoneKind) {
       el('div', { class: 'sheet-section-label', text: 'Pitch Type' }),
       ptGrid,
       el('div', { class: 'sheet-section-label', text: 'Result' }),
-      resGrid,
+      mkRes('nc'),
+      el('div', { class: 'sheet-section-label', text: 'If put in play' }),
+      mkRes('ip'),
       el('button', { class: 'btn btn-block', style: { marginTop: '16px' }, onclick: closeModal }, 'Cancel')
     ]);
   }
@@ -487,6 +505,10 @@ function applyCount(g, resultId) {
     case 'in_play_out':
       recordOut(); endAtBat();
       break;
+    case 'single':
+    case 'double':
+    case 'triple':
+    case 'hr':
     case 'hit':
     case 'hbp':
       endAtBat();
@@ -586,51 +608,102 @@ function renderStats() {
     return wrap;
   }
 
-  wrap.appendChild(statsHeatZone(pitches));
+  if (!state.ui.statsMetric) state.ui.statsMetric = 'frequency';
+  const metricToggle = el('div', { class: 'segmented', style: { marginBottom: '14px' } },
+    Object.entries(HEAT_METRICS).map(([key, m]) =>
+      el('div', {
+        class: 'chip' + (state.ui.statsMetric === key ? ' selected' : ''),
+        onclick: () => { state.ui.statsMetric = key; save(); render(); }
+      }, m.label)));
+
+  wrap.appendChild(metricToggle);
+  wrap.appendChild(statsHeatZone(pitches, state.ui.statsMetric));
   wrap.appendChild(statsSummary(pitches));
   wrap.appendChild(statsPitchMix(pitches));
   return wrap;
 }
 
-// Heat map over the 9 strike-zone cells: colors by usage frequency,
-// echoing the screenshot's blue→red gradient.
-function statsHeatZone(pitches) {
-  const counts = {};
-  ZONES.forEach(z => counts[z.id] = 0);
-  pitches.forEach(pt => { if (counts[pt.zone] != null) counts[pt.zone]++; });
-  const max = Math.max(1, ...Object.values(counts));
+// Per-zone aggregates over the given pitches, used by every heat metric.
+function zoneAggregates(pitches) {
+  const agg = {};
+  ZONES.forEach(z => agg[z.id] = { count: 0, whiffs: 0, swings: 0, hits: 0, bip: 0 });
+  pitches.forEach(pt => {
+    const a = agg[pt.zone];
+    if (!a) return;
+    a.count++;
+    if (pt.result === 'swing_strike') a.whiffs++;
+    if (SWING_RESULTS.includes(pt.result)) a.swings++;
+    if (HIT_RESULTS.includes(pt.result)) a.hits++;
+    if (IN_PLAY_RESULTS.includes(pt.result)) a.bip++;
+  });
+  return agg;
+}
+
+// Heat-map metrics. Each returns, per zone: whether there's data (`has`), a
+// 0..1 color intensity (`t`, blue→red), and the cell `text`.
+const HEAT_METRICS = {
+  frequency: {
+    label: 'Frequency',
+    caption: '<strong>Location</strong> — pitch count per zone',
+    legend: ['Fewer', 'More'],
+    compute: (a, ctx) => ({ has: a.count > 0, t: a.count / ctx.maxCount, text: a.count ? String(a.count) : '' })
+  },
+  whiff: {
+    label: 'Whiff %',
+    caption: '<strong>Swing &amp; miss %</strong> — whiffs &divide; swings per zone',
+    legend: ['Contact', 'Misses bats'],
+    compute: a => ({
+      has: a.swings > 0,
+      t: a.swings ? a.whiffs / a.swings : 0,
+      text: a.swings ? Math.round((a.whiffs / a.swings) * 100) + '%' : '—'
+    })
+  },
+  ba: {
+    label: 'Avg against',
+    caption: '<strong>Batting avg against</strong> — hits &divide; balls in play per zone',
+    legend: ['Weak', 'Gets hit'],
+    compute: a => {
+      const ba = a.bip ? a.hits / a.bip : 0;
+      return { has: a.bip > 0, t: Math.min(1, ba / 0.5), text: a.bip ? ba.toFixed(3).replace(/^0/, '') : '—' };
+    }
+  }
+};
+
+function statsHeatZone(pitches, metricKey) {
+  const metric = HEAT_METRICS[metricKey] || HEAT_METRICS.frequency;
+  const agg = zoneAggregates(pitches);
+  const ctx = { maxCount: Math.max(1, ...ZONES.map(z => agg[z.id].count)) };
 
   const grid = el('div', { class: 'zone-grid' });
   ZONES.forEach(z => {
-    const c = counts[z.id] || 0;
-    const t = c / max; // 0..1
+    const r = metric.compute(agg[z.id], ctx);
     const cell = el('div', {
       class: `zcell ${z.kind}`,
-      style: { gridColumn: z.col, gridRow: z.row, background: heatColor(t, z.kind), border: 'none' }
+      style: {
+        gridColumn: z.col, gridRow: z.row, border: 'none',
+        background: r.has ? heatColor(r.t) : (z.kind === 'strike' ? '#1a1f26' : '#11151b')
+      }
     });
-    if (z.kind === 'strike') {
-      cell.appendChild(el('span', { class: 'zval', text: String(c) }));
-    } else if (c > 0) {
-      cell.appendChild(el('span', { class: 'zval', style: { fontSize: '12px' }, text: String(c) }));
-    }
+    if (r.text && (z.kind === 'strike' || r.has))
+      cell.appendChild(el('span', { class: 'zval', style: { fontSize: '13px' }, text: r.text }));
     grid.appendChild(cell);
   });
 
   return el('div', { class: 'zone-wrap' }, [
-    el('div', { class: 'zone-caption', html: '<strong>Location heat map</strong> — pitch count per zone' }),
+    el('div', { class: 'zone-caption', html: metric.caption }),
     grid,
     el('div', { class: 'zone-legend' }, [
-      el('span', { html: '<span class="legend-swatch" style="background:#2f6fdb"></span>Fewer' }),
-      el('span', { html: '<span class="legend-swatch" style="background:#e23c2e"></span>More' })
+      el('span', { html: `<span class="legend-swatch" style="background:#2f6fdb"></span>${metric.legend[0]}` }),
+      el('span', { html: `<span class="legend-swatch" style="background:#e23c2e"></span>${metric.legend[1]}` })
     ])
   ]);
 }
 
-function heatColor(t, kind) {
-  if (t <= 0) return kind === 'strike' ? '#1a1f26' : '#11151b';
-  // blue (low) -> red (high)
+// blue (low) -> red (high)
+function heatColor(t) {
+  const x = Math.max(0, Math.min(1, t));
   const blue = [47, 111, 219], red = [226, 60, 46];
-  const mix = blue.map((b, i) => Math.round(b + (red[i] - b) * t));
+  const mix = blue.map((b, i) => Math.round(b + (red[i] - b) * x));
   return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
 }
 
@@ -638,26 +711,31 @@ function statsSummary(pitches) {
   const total = pitches.length;
   const strikeResults = ['called_strike', 'swing_strike', 'foul'];
   const inZone = pitches.filter(pt => ZONES.find(z => z.id === pt.zone)?.kind === 'strike').length;
-  const strikes = pitches.filter(pt => strikeResults.includes(pt.result) ||
-    ZONES.find(z => z.id === pt.zone)?.kind === 'strike' && pt.result === 'in_play_out').length;
+  const strikes = pitches.filter(pt =>
+    strikeResults.includes(pt.result) || IN_PLAY_RESULTS.includes(pt.result)).length;
   const swStrikes = pitches.filter(pt => pt.result === 'swing_strike').length;
+  const swings = pitches.filter(pt => SWING_RESULTS.includes(pt.result)).length;
   const balls = pitches.filter(pt => pt.result === 'ball').length;
-  const hits = pitches.filter(pt => pt.result === 'hit').length;
+  const hits = pitches.filter(pt => HIT_RESULTS.includes(pt.result)).length;
+  const xbh = pitches.filter(pt => ['double', 'triple', 'hr'].includes(pt.result)).length;
+  const bip = pitches.filter(pt => IN_PLAY_RESULTS.includes(pt.result)).length;
   const firstPitch = pitches.filter(pt => pt.balls === 0 && pt.strikes === 0);
   const firstPitchStrikes = firstPitch.filter(pt =>
-    strikeResults.includes(pt.result) || pt.result === 'in_play_out' || pt.result === 'hit').length;
+    strikeResults.includes(pt.result) || IN_PLAY_RESULTS.includes(pt.result)).length;
 
   const pct = (n, d) => d ? Math.round((n / d) * 100) + '%' : '—';
+  const ba = bip ? (hits / bip).toFixed(3).replace(/^0/, '') : '—';
 
   return el('div', { class: 'card' }, [
     el('h3', { text: 'Summary', style: { margin: '0 0 8px' } }),
     statRow('Total pitches', total),
     statRow('In strike zone', `${inZone} (${pct(inZone, total)})`),
-    statRow('Called/swing strikes & fouls', strikes),
-    statRow('Swing & miss', `${swStrikes} (${pct(swStrikes, total)})`),
+    statRow('Strikes (called/swing/foul/in play)', strikes),
+    statRow('Swing & miss (whiff)', `${swStrikes} (${pct(swStrikes, swings)} of swings)`),
     statRow('Balls', `${balls} (${pct(balls, total)})`),
-    statRow('Hits allowed', hits),
-    statRow('First-pitch strikes', pct(firstPitchStrikes, firstPitch.length))
+    statRow('First-pitch strikes', pct(firstPitchStrikes, firstPitch.length)),
+    statRow('Hits allowed', `${hits}${xbh ? ` (${xbh} XBH)` : ''}`),
+    statRow('Avg against (balls in play)', ba)
   ]);
 }
 
