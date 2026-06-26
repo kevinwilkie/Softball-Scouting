@@ -98,6 +98,20 @@ game pitch-by-pitch:
 
 You can run multiple games and switch between them. Each game is saved.
 
+### At-Bat tab (live opponent-pitcher scouting)
+Real-time charting of how opposing pitchers attack **your** hitters. Pick the
+hitter at the plate, set the opposing pitcher (name + throws R/L + opponent),
+then **tap the strike zone** for each pitch and pick its result. As you go it
+keeps a live ball/strike count and builds:
+- a **heat map** of where that hitter gets pitched (toggle: location frequency,
+  their swing-and-miss zones, and where they do damage),
+- a **vs RHP / LHP** filter,
+- a **"What They're Seeing"** summary (pitches seen, in-zone %, whiff %, hits)
+  and the **pitch mix** they're being thrown.
+
+Great for in-game adjustments — see at a glance that a pitcher is pounding a
+hitter inside or that she chases low-and-away.
+
 ### Stats tab
 Two modes via the toggle at the top:
 

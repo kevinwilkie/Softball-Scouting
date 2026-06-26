@@ -146,6 +146,7 @@ const defaultState = () => ({
   opponents: [],    // {id, name, players:[{id, name, bats, number, position, isPitcher}]}
   schedule: [],     // {id, date, time, opponentId, opponentName, homeAway, location, notes, gameId}
   atbats: [],       // {id, hitterId, date, opponentId, opponentName, result, rbi}  (my hitters' offense)
+  hitterPitches: [],// {id, hitterId, oppId, pitcherName, pitcherHand, zone, pitchType, result, balls, strikes, date, ts}
   games: [],        // {id, date, opponentId, pitcherId, pitches:[...], ...lineups}
   activeGameId: null,
   ui: { tab: 'pitchers', statsPitcherId: null, statsGameId: null }
@@ -163,6 +164,7 @@ function load() {
       if (!Array.isArray(s.opponents)) s.opponents = [];
       if (!Array.isArray(s.schedule)) s.schedule = [];
       if (!Array.isArray(s.atbats)) s.atbats = [];
+      if (!Array.isArray(s.hitterPitches)) s.hitterPitches = [];
       if (s.ui && s.ui.tab === 'roster') s.ui.tab = 'pitchers';
       return s;
     }
@@ -260,6 +262,7 @@ function render() {
     opponents: renderOpponents,
     schedule: renderSchedule,
     game: renderGame,
+    abscout: renderHitterScout,
     stats: renderStats
   };
   root.appendChild((views[state.ui.tab] || renderRoster)());
@@ -1766,6 +1769,196 @@ function lineStat(label, value) {
   ]);
 }
 
+/* ================== LIVE HITTER SCOUT (AT BAT) ======================= */
+
+function scoutPitchesFor(hitterId) {
+  return (state.hitterPitches || []).filter(p => p.hitterId === hitterId)
+    .sort((a, b) => (a.ts || 0) - (b.ts || 0));
+}
+
+// Current ball/strike count derived from a hitter's logged pitches.
+function deriveScoutCount(pitches) {
+  let b = 0, s = 0;
+  pitches.forEach(pt => {
+    const r = pt.result;
+    if (r === 'ball') { b++; if (b >= 4) { b = 0; s = 0; } }
+    else if (r === 'called_strike' || r === 'swing_strike') { s++; if (s >= 3) { b = 0; s = 0; } }
+    else if (r === 'foul') { if (s < 2) s++; }
+    else { b = 0; s = 0; } // in play / hit / hbp ends the at-bat
+  });
+  return { balls: b, strikes: s };
+}
+
+function renderHitterScout() {
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'section-head' }, [el('h2', { text: 'At-Bat Scout' })]));
+
+  if (!state.hitters.length) {
+    wrap.appendChild(el('div', { class: 'empty' }, [
+      el('p', { text: '🥎' }),
+      el('p', { text: 'Add your hitters first.' }),
+      el('button', { class: 'btn btn-primary', onclick: () => setTab('hitters') }, 'Go to Hitters')
+    ]));
+    return wrap;
+  }
+
+  if (!state.ui.scoutHitterId || !hitterById(state.ui.scoutHitterId))
+    state.ui.scoutHitterId = state.hitters[0].id;
+  const h = hitterById(state.ui.scoutHitterId);
+
+  // hitter selector
+  wrap.appendChild(el('div', { class: 'pill-row' }, state.hitters.map(x =>
+    el('div', {
+      class: 'spitch' + (x.id === state.ui.scoutHitterId ? ' selected' : ''),
+      onclick: () => { state.ui.scoutHitterId = x.id; save(); render(); }
+    }, `${x.number ? '#' + x.number + ' ' : ''}${x.name}`))));
+
+  // opposing-pitcher context (stamped on each logged pitch)
+  state.ui.scout = state.ui.scout || { oppId: null, pitcherName: '', pitcherHand: 'R' };
+  const ctx = state.ui.scout;
+  const oppSel = el('select', { onchange: e => { ctx.oppId = e.target.value || null; save(); } }, [
+    el('option', { value: '' }, '— Opponent —'),
+    ...state.opponents.map(o => el('option', { value: o.id, selected: o.id === ctx.oppId }, o.name))
+  ]);
+  const pName = el('input', { type: 'text', value: ctx.pitcherName || '', placeholder: 'Opposing pitcher', autocomplete: 'off',
+    oninput: e => { ctx.pitcherName = e.target.value; } });
+  const handSeg = el('div', { class: 'segmented hand-seg' }, ['R', 'L'].map(hh =>
+    el('div', { class: 'chip' + ((ctx.pitcherHand || 'R') === hh ? ' selected' : ''),
+      onclick: () => { ctx.pitcherHand = hh; save(); render(); } }, hh === 'R' ? 'RHP' : 'LHP')));
+  wrap.appendChild(el('div', { class: 'card' }, [
+    el('div', { class: 'row-2' }, [
+      el('div', { class: 'field' }, [el('label', { text: 'Opponent' }), oppSel]),
+      el('div', { class: 'field' }, [el('label', { text: 'Throws' }), handSeg])
+    ]),
+    el('div', { class: 'field', style: { marginBottom: '0' } }, [el('label', { text: 'Pitcher' }), pName])
+  ]));
+
+  const all = scoutPitchesFor(h.id);
+  const count = deriveScoutCount(all);
+
+  // live count + current batter
+  wrap.appendChild(el('div', { class: 'scout-count' }, [
+    el('div', { class: 'sb-stat' }, [el('span', { class: 'sb-label', text: 'BALLS' }), dots(count.balls, 4, 'fill-green')]),
+    el('div', { class: 'sb-stat' }, [el('span', { class: 'sb-label', text: 'STRIKES' }), dots(count.strikes, 3, 'fill-yellow')]),
+    el('div', { class: 'scout-batter', text: `bats ${h.bats || 'R'}` })
+  ]));
+
+  // tap zone to log a pitch
+  const grid = el('div', { class: 'zone-grid' });
+  ZONES.forEach(z => {
+    const cell = el('div', { class: `zcell ${z.kind}`, style: { gridColumn: z.col, gridRow: z.row },
+      onclick: () => openScoutPitchEntry(h, z.id, z.kind, count) });
+    if (z.kind === 'strike') cell.appendChild(el('span', { class: 'zval', text: z.id }));
+    grid.appendChild(cell);
+  });
+  wrap.appendChild(el('div', { class: 'zone-wrap' }, [
+    el('div', { class: 'zone-caption' }, ['Tap where the pitch was located to ', el('strong', { text: h.name }), '.']),
+    grid
+  ]));
+
+  // pitcher-hand filter + heat map of pitches faced
+  if (!state.ui.scoutHand) state.ui.scoutHand = 'all';
+  const rhp = all.filter(p => p.pitcherHand === 'R').length;
+  const lhp = all.filter(p => p.pitcherHand === 'L').length;
+  wrap.appendChild(el('div', { class: 'segmented', style: { margin: '14px 0' } },
+    [['all', `All (${all.length})`], ['R', `vs RHP (${rhp})`], ['L', `vs LHP (${lhp})`]].map(([k, lbl]) =>
+      el('div', { class: 'chip' + (state.ui.scoutHand === k ? ' selected' : ''),
+        onclick: () => { state.ui.scoutHand = k; save(); render(); } }, lbl))));
+  let view = state.ui.scoutHand === 'all' ? all : all.filter(p => p.pitcherHand === state.ui.scoutHand);
+
+  if (view.length) {
+    if (!state.ui.scoutMetric) state.ui.scoutMetric = 'frequency';
+    wrap.appendChild(el('div', { class: 'segmented', style: { marginBottom: '14px' } },
+      Object.entries(HEAT_METRICS).map(([key, m]) =>
+        el('div', { class: 'chip' + (state.ui.scoutMetric === key ? ' selected' : ''),
+          onclick: () => { state.ui.scoutMetric = key; save(); render(); } }, m.label))));
+    wrap.appendChild(statsHeatZone(view, state.ui.scoutMetric));
+    wrap.appendChild(scoutSummary(view));
+    wrap.appendChild(statsPitchMix(view));
+  }
+
+  wrap.appendChild(scoutLog(h, all));
+  return wrap;
+}
+
+function openScoutPitchEntry(h, zoneId, zoneKind, count) {
+  const draft = { pitchType: PITCH_TYPES[0] };
+  function body() {
+    const ptGrid = el('div', { class: 'opt-grid cols-3' }, PITCH_TYPES.map(pt =>
+      el('div', {
+        class: 'opt',
+        style: draft.pitchType === pt ? { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' } : {},
+        onclick: () => { draft.pitchType = pt; openModal(body()); }
+      }, pt)));
+    const mkRes = group => el('div', { class: 'opt-grid' }, RESULTS.filter(r => r.group === group).map(r =>
+      el('div', { class: `opt tone-${r.tone}`, onclick: () => commitScoutPitch(h, zoneId, draft.pitchType, r.id) }, r.label)));
+    return el('div', {}, [
+      el('div', { class: 'sheet-handle' }),
+      el('h3', { text: `Zone ${zoneId} · ${zoneKind === 'strike' ? 'In zone' : 'Out of zone'}` }),
+      el('p', { class: 'sheet-sub', text: `${h.name} · ${count.balls}-${count.strikes}` }),
+      el('div', { class: 'sheet-section-label', text: 'Pitch Type' }), ptGrid,
+      el('div', { class: 'sheet-section-label', text: 'Result' }), mkRes('nc'),
+      el('div', { class: 'sheet-section-label', text: 'If put in play' }), mkRes('ip'),
+      el('button', { class: 'btn btn-block', style: { marginTop: '16px' }, onclick: closeModal }, 'Cancel')
+    ]);
+  }
+  openModal(body());
+}
+
+function commitScoutPitch(h, zoneId, pitchType, resultId) {
+  const ctx = state.ui.scout || {};
+  const c = deriveScoutCount(scoutPitchesFor(h.id));
+  state.hitterPitches.push({
+    id: uid(), hitterId: h.id, oppId: ctx.oppId || null,
+    pitcherName: (ctx.pitcherName || '').trim(), pitcherHand: ctx.pitcherHand || 'R',
+    zone: zoneId, pitchType, result: resultId, balls: c.balls, strikes: c.strikes,
+    date: todayISO(), ts: Date.now()
+  });
+  save(); closeModal(); render();
+  toast(`${pitchType} · ${RESULT_LABEL[resultId]}`);
+}
+
+function scoutSummary(pitches) {
+  const total = pitches.length;
+  const inZone = pitches.filter(p => ZONES.find(z => z.id === p.zone)?.kind === 'strike').length;
+  const sw = pitches.filter(p => p.result === 'swing_strike').length;
+  const swings = pitches.filter(p => SWING_RESULTS.includes(p.result)).length;
+  const hits = pitches.filter(p => HIT_RESULTS.includes(p.result)).length;
+  const pct = (n, d) => d ? Math.round((n / d) * 100) + '%' : '—';
+  return el('div', { class: 'card' }, [
+    el('h3', { text: "What They're Seeing", style: { margin: '0 0 8px' } }),
+    statRow('Pitches seen', total),
+    statRow('In strike zone', `${inZone} (${pct(inZone, total)})`),
+    statRow('Swing & miss', `${sw} (${pct(sw, swings)} of swings)`),
+    statRow('Hits', hits)
+  ]);
+}
+
+function scoutLog(h, all) {
+  const box = el('div');
+  box.appendChild(el('div', { class: 'log-head' }, [
+    el('div', { class: 'muted', text: `${all.length} pitch${all.length === 1 ? '' : 'es'} to ${h.name}` }),
+    all.length ? el('button', { class: 'btn btn-sm', onclick: () => {
+      const last = all[all.length - 1];
+      state.hitterPitches = state.hitterPitches.filter(p => p.id !== last.id);
+      save(); render();
+    } }, '↶ Undo last') : null
+  ]));
+  if (!all.length) return box;
+  const list = el('div', { class: 'log-list' });
+  [...all].reverse().slice(0, 15).forEach(p => {
+    list.appendChild(el('div', { class: 'log-row' }, [
+      el('div', { class: `log-pill ${RESULT_TONE[p.result]}`, text: p.zone }),
+      el('div', { class: 'log-main' }, [
+        el('div', { text: `${p.pitchType} — ${RESULT_LABEL[p.result]}` }),
+        el('div', { class: 'log-sub', text: `${p.balls}-${p.strikes}${p.pitcherName ? ' · ' + p.pitcherName : ''} · ${p.pitcherHand === 'L' ? 'LHP' : 'RHP'}` })
+      ])
+    ]));
+  });
+  box.appendChild(list);
+  return box;
+}
+
 /* ============================ STATS TAB =============================== */
 
 function renderStats() {
@@ -2227,7 +2420,8 @@ function exportBackup() {
   const payload = {
     app: 'chs-softball-scout', version: 1, exportedAt: new Date().toISOString(),
     pitchers: state.pitchers, hitters: state.hitters, opponents: state.opponents,
-    schedule: state.schedule, games: state.games, atbats: state.atbats || []
+    schedule: state.schedule, games: state.games, atbats: state.atbats || [],
+    hitterPitches: state.hitterPitches || []
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -2254,6 +2448,7 @@ function importBackup(file) {
     state.schedule = data.schedule || [];
     state.games = data.games || [];
     state.atbats = data.atbats || [];
+    state.hitterPitches = data.hitterPitches || [];
     state.activeGameId = null;
     state.ui = { tab: 'pitchers' };
     save();
