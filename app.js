@@ -22,6 +22,9 @@ const PITCH_ABBR = {
 };
 const abbr = name => PITCH_ABBR[name] || (name || '?').slice(0, 2).toUpperCase();
 
+// For charting opposing pitchers you usually only read velocity, not grip.
+const SCOUT_PITCH_TYPES = ['Hard', 'Soft'];
+
 const BATS = ['R', 'L', 'S']; // right / left / switch
 const BATS_LABEL = { R: 'Bats R', L: 'Bats L', S: 'Switch' };
 const POSITIONS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DP', 'FLEX', 'UTIL'];
@@ -1882,9 +1885,9 @@ function renderHitterScout() {
 }
 
 function openScoutPitchEntry(h, zoneId, zoneKind, count) {
-  const draft = { pitchType: PITCH_TYPES[0] };
+  const draft = { pitchType: SCOUT_PITCH_TYPES[0] };
   function body() {
-    const ptGrid = el('div', { class: 'opt-grid cols-3' }, PITCH_TYPES.map(pt =>
+    const ptGrid = el('div', { class: 'opt-grid' }, SCOUT_PITCH_TYPES.map(pt =>
       el('div', {
         class: 'opt',
         style: draft.pitchType === pt ? { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' } : {},
@@ -1896,7 +1899,7 @@ function openScoutPitchEntry(h, zoneId, zoneKind, count) {
       el('div', { class: 'sheet-handle' }),
       el('h3', { text: `Zone ${zoneId} · ${zoneKind === 'strike' ? 'In zone' : 'Out of zone'}` }),
       el('p', { class: 'sheet-sub', text: `${h.name} · ${count.balls}-${count.strikes}` }),
-      el('div', { class: 'sheet-section-label', text: 'Pitch Type' }), ptGrid,
+      el('div', { class: 'sheet-section-label', text: 'Pitch Speed' }), ptGrid,
       el('div', { class: 'sheet-section-label', text: 'Result' }), mkRes('nc'),
       el('div', { class: 'sheet-section-label', text: 'If put in play' }), mkRes('ip'),
       el('button', { class: 'btn btn-block', style: { marginTop: '16px' }, onclick: closeModal }, 'Cancel')

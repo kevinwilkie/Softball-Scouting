@@ -101,8 +101,9 @@ You can run multiple games and switch between them. Each game is saved.
 ### At-Bat tab (live opponent-pitcher scouting)
 Real-time charting of how opposing pitchers attack **your** hitters. Pick the
 hitter at the plate, set the opposing pitcher (name + throws R/L + opponent),
-then **tap the strike zone** for each pitch and pick its result. As you go it
-keeps a live ball/strike count and builds:
+then **tap the strike zone** for each pitch, mark it **Hard or Soft** (velocity
+is usually all you can read off an opposing pitcher), and pick the result. As
+you go it keeps a live ball/strike count and builds:
 - a **heat map** of where that hitter gets pitched (toggle: location frequency,
   their swing-and-miss zones, and where they do damage),
 - a **vs RHP / LHP** filter,
