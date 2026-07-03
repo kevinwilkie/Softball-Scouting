@@ -429,6 +429,28 @@ button { font-family: inherit; }
 
 .hidden { display: none !important; }
 
+/* ---------- team sign-in gate ---------- */
+.auth-gate {
+  position: fixed; inset: 0; z-index: 500;
+  background: linear-gradient(180deg, #11151b, #0d0f12);
+  display: grid; place-items: center; padding: 24px;
+}
+.auth-gate.hidden { display: none !important; }
+.auth-box { width: 100%; max-width: 330px; text-align: center; }
+.auth-logo {
+  width: 78px; height: 78px; border-radius: 18px; background: #fff;
+  display: block; margin: 0 auto 18px; box-shadow: 0 8px 28px rgba(0,0,0,.45);
+}
+.auth-box h2 { margin: 0; font-size: 22px; font-weight: 800; }
+.auth-sub { margin: 4px 0 24px; color: var(--text-dim); font-size: 14px; }
+.auth-btn {
+  width: 100%; padding: 13px 16px; border-radius: 12px;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink);
+  font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.auth-btn.ghost { background: transparent; color: var(--text-dim); border-color: var(--border); margin-top: 10px; }
+.auth-err { color: var(--red); font-size: 13px; margin-top: 16px; min-height: 1em; line-height: 1.4; }
+
 /* stats */
 .stat-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
 .stat-row:last-child { border: none; }

@@ -189,6 +189,8 @@ function load() {
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
   catch (e) { console.warn('save failed', e); }
+  // Push changes to the shared database when team-sync is active (no-op otherwise).
+  if (window.__syncPush) window.__syncPush();
 }
 
 function uid() {

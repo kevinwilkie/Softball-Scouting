@@ -1,10 +1,12 @@
 /* Minimal offline cache so the app works at the field with no signal. */
-const CACHE = 'chs-scout-v17';
+const CACHE = 'chs-scout-v18';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './firebase-config.js',
+  './sync.js',
   './manifest.json',
   './icon.svg'
 ];

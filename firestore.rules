@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Shared coaching data. Only signed-in coaches on the allowlist can read/write.
+// Keep this email list in sync with ALLOWED_EMAILS in firebase-config.js.
+//
+// Deploy from the Firebase console (Firestore → Rules → paste → Publish) or via
+// the CLI: `firebase deploy --only firestore:rules`.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isCoach() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in [
+          // "headcoach@example.com",
+          // "assistant@example.com"
+        ];
+    }
+
+    match /shared/{doc} {
+      allow read, write: if isCoach();
+    }
+  }
+}
