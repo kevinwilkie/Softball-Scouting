@@ -65,18 +65,17 @@
     SLICES.forEach(key => {
       const ref = db.collection('shared').doc(key);
       unsubs.push(ref.onSnapshot(snap => {
-        if (!snap.exists) {
-          // Seed the shared copy from this device's data the first time.
-          if (!seeded[key]) {
-            seeded[key] = true;
-            const local = state[key] || [];
-            if (local.length) writeSlice(key, local, user);
-          }
+        const d = (snap.exists && snap.data()) || {};
+        const arr = Array.isArray(d.data) ? d.data : [];
+        const firstSnap = !seeded[key];
+        seeded[key] = true;
+        // If the shared copy is empty (missing, or left empty by an earlier
+        // session) but THIS device has data, push local up to seed it — never
+        // let an empty shared slice wipe a populated local one.
+        if (arr.length === 0 && (state[key] || []).length > 0) {
+          if (firstSnap) { lastSynced[key] = JSON.stringify(state[key]); writeSlice(key, state[key], user); }
           return;
         }
-        seeded[key] = true;
-        const d = snap.data() || {};
-        const arr = Array.isArray(d.data) ? d.data : [];
         const json = JSON.stringify(arr);
         if (json === lastSynced[key]) return; // our own write echoing back
         lastSynced[key] = json;

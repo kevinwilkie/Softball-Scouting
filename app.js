@@ -194,18 +194,33 @@ const SEED_ROSTER = [
   { name: 'Zoe Berry',           year: '8th Grade', bats: 'R', pos: 'P' }
 ];
 
-// Seed the roster once, only into a fresh empty install. Returns true if state
-// changed (so the caller persists it).
-function seedRoster(s) {
-  if (s.rosterSeeded) return false;
-  s.rosterSeeded = true;
-  if (s.hitters.length || s.pitchers.length) return true; // already has data; just mark seeded
+// Add any roster players not already present (matched by name). Safe to call
+// repeatedly — it never creates duplicates. Returns how many hitters were added.
+function applyRosterSeed(s) {
+  if (!Array.isArray(s.hitters)) s.hitters = [];
+  if (!Array.isArray(s.pitchers)) s.pitchers = [];
+  const haveH = new Set(s.hitters.map(h => (h.name || '').trim().toLowerCase()));
+  const haveP = new Set(s.pitchers.map(p => (p.name || '').trim().toLowerCase()));
+  let added = 0;
   SEED_ROSTER.forEach(r => {
-    s.hitters.push({ id: uid(), name: r.name, bats: r.bats, number: '', position: r.pos, classification: r.year });
-    if (r.pos.split('/').includes('P')) {
+    const key = r.name.toLowerCase();
+    if (!haveH.has(key)) {
+      s.hitters.push({ id: uid(), name: r.name, bats: r.bats, number: '', position: r.pos, classification: r.year });
+      added++;
+    }
+    if (r.pos.split('/').includes('P') && !haveP.has(key)) {
       s.pitchers.push({ id: uid(), name: r.name, classification: r.year, hand: 'R', pitches: [] });
     }
   });
+  return added;
+}
+
+// Auto-seed once per device. The v2 flag lets devices seeded by the earlier
+// (buggy) build re-run this; de-duplication keeps it from doubling anyone up.
+function seedRoster(s) {
+  if (s.rosterSeededV2) return false;
+  s.rosterSeededV2 = true;
+  applyRosterSeed(s);
   return true;
 }
 
@@ -2725,6 +2740,14 @@ function openBackupMenu() {
     el('p', { class: 'muted', style: { fontSize: '12px', marginTop: '6px' }, text: shared
       ? 'Sends this device’s Hitters and Pitchers to the shared team database.'
       : 'Sign in with team sharing first, then this pushes the roster to everyone.' }),
+    el('button', { class: 'btn btn-block', style: { marginTop: '10px' }, onclick: () => {
+      const added = applyRosterSeed(state);
+      save();
+      closeModal();
+      render();
+      toast(added ? `Added ${added} player${added === 1 ? '' : 's'}` : 'Roster already loaded');
+    } }, '↻ Reload Carrollton roster'),
+    el('p', { class: 'muted', style: { fontSize: '12px', marginTop: '6px' }, text: 'Re-adds any of the 22 team players that are missing. Never duplicates anyone.' }),
     el('button', { class: 'btn btn-primary btn-block', style: { marginTop: '16px' }, onclick: exportBackup }, '⬇ Export backup (.json)'),
     el('div', { class: 'field', style: { marginTop: '14px' } }, [
       el('label', { text: 'Restore from a backup file' }), fileInput
