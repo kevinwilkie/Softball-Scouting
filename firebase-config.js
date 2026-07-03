@@ -17,16 +17,16 @@
 --------------------------------------------------------------------------- */
 
 window.FIREBASE_CONFIG = {
-  apiKey: "PASTE_API_KEY",
-  authDomain: "PASTE_PROJECT.firebaseapp.com",
-  projectId: "PASTE_PROJECT_ID",
-  storageBucket: "PASTE_PROJECT.appspot.com",
-  messagingSenderId: "PASTE_SENDER_ID",
-  appId: "PASTE_APP_ID"
+  apiKey: "AIzaSyAhFlDu4lCrenrkJUU1wsgekYEFdB7l-ys",
+  authDomain: "carrollton-softball.firebaseapp.com",
+  projectId: "carrollton-softball",
+  storageBucket: "carrollton-softball.firebasestorage.app",
+  messagingSenderId: "314657734660",
+  appId: "1:314657734660:web:8d7f8f5cea00f428c5f551"
 };
 
 // Coaches allowed to sign in (must also be listed in firestore.rules).
 window.ALLOWED_EMAILS = [
-  // "headcoach@example.com",
-  // "assistant@example.com",
+  "kevin.wilkie@campusoutreach.org",
+  // add the rest of your staff emails here
 ];

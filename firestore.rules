@@ -13,8 +13,8 @@ service cloud.firestore {
       return request.auth != null
         && request.auth.token.email_verified == true
         && request.auth.token.email in [
-          // "headcoach@example.com",
-          // "assistant@example.com"
+          "kevin.wilkie@campusoutreach.org"
+          // add the rest of your staff emails here, comma-separated
         ];
     }
 
