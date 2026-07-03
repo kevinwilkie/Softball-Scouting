@@ -8,7 +8,7 @@
 
 /* ----------------------------- Constants ------------------------------- */
 
-const CLASSIFICATIONS = ['Freshman', 'Sophomore', 'Junior', 'Senior'];
+const CLASSIFICATIONS = ['8th Grade', 'Freshman', 'Sophomore', 'Junior', 'Senior'];
 
 const PITCH_TYPES = [
   'Fastball', 'Changeup', 'Curveball', 'Riseball',
@@ -38,7 +38,7 @@ const RESULT_ABBR = {
 
 const BATS = ['R', 'L', 'S']; // right / left / switch
 const BATS_LABEL = { R: 'Bats R', L: 'Bats L', S: 'Switch' };
-const POSITIONS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DP', 'FLEX', 'UTIL'];
+const POSITIONS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'INF', 'OF', 'UTL', 'C/INF', 'P/INF', 'OF/P', 'DP', 'FLEX', 'UTIL'];
 
 // Plate-appearance outcomes for my hitters. ab = counts as an at-bat;
 // hit = base hit; ob = reaches base (for OBP); tb = total bases.
@@ -166,7 +166,51 @@ const defaultState = () => ({
   ui: { tab: 'pitchers', statsPitcherId: null, statsGameId: null }
 });
 
+// Carrollton's team roster, seeded once into a brand-new install. Everyone is
+// added as a hitter; players whose position includes "P" also get a pitcher
+// record so they show up in the Pitchers section.
+const SEED_ROSTER = [
+  { name: 'Kaitie Thornton',     year: 'Senior',    bats: 'R', pos: 'INF' },
+  { name: 'Payton Johnson',      year: 'Senior',    bats: 'R', pos: 'INF' },
+  { name: 'Tessie McWhorter',    year: 'Senior',    bats: 'R', pos: 'OF' },
+  { name: 'Ari Harley',          year: 'Junior',    bats: 'L', pos: 'OF' },
+  { name: 'Bri Harley',          year: 'Junior',    bats: 'L', pos: 'UTL' },
+  { name: 'Khloe Norton',        year: 'Junior',    bats: 'R', pos: 'P' },
+  { name: 'Kylei Taylor',        year: 'Junior',    bats: 'R', pos: 'INF' },
+  { name: 'Jayda Byrd',          year: 'Sophomore', bats: 'R', pos: 'INF' },
+  { name: 'Kadence Piel',        year: 'Sophomore', bats: 'R', pos: 'INF' },
+  { name: 'Kenzie Dyer',         year: 'Sophomore', bats: 'R', pos: 'OF' },
+  { name: 'Laci Jordan',         year: 'Sophomore', bats: 'R', pos: 'OF/P' },
+  { name: 'Zion Warford-Cooper', year: 'Sophomore', bats: 'R', pos: 'OF/P' },
+  { name: 'Zyon Blakey',         year: 'Sophomore', bats: 'R', pos: 'C/INF' },
+  { name: 'Aubree Kee',          year: 'Sophomore', bats: 'R', pos: 'P/INF' },
+  { name: 'Jo Boggs',            year: 'Freshman',  bats: 'R', pos: 'INF' },
+  { name: 'Riley Rucker',        year: 'Freshman',  bats: 'R', pos: 'INF' },
+  { name: 'Rhegan Hill',         year: 'Freshman',  bats: 'R', pos: 'OF' },
+  { name: 'Peyton White',        year: 'Freshman',  bats: 'R', pos: 'C/INF' },
+  { name: 'Marlee Cross',        year: 'Freshman',  bats: 'R', pos: 'INF' },
+  { name: 'Cassie Tipton',       year: 'Freshman',  bats: 'R', pos: 'C/INF' },
+  { name: 'Leah Combs',          year: '8th Grade', bats: 'R', pos: 'INF' },
+  { name: 'Zoe Berry',           year: '8th Grade', bats: 'R', pos: 'P' }
+];
+
+// Seed the roster once, only into a fresh empty install. Returns true if state
+// changed (so the caller persists it).
+function seedRoster(s) {
+  if (s.rosterSeeded) return false;
+  s.rosterSeeded = true;
+  if (s.hitters.length || s.pitchers.length) return true; // already has data; just mark seeded
+  SEED_ROSTER.forEach(r => {
+    s.hitters.push({ id: uid(), name: r.name, bats: r.bats, number: '', position: r.pos, classification: r.year });
+    if (r.pos.split('/').includes('P')) {
+      s.pitchers.push({ id: uid(), name: r.name, classification: r.year, hand: 'R', pitches: [] });
+    }
+  });
+  return true;
+}
+
 let state = load();
+if (seedRoster(state)) save();
 
 function load() {
   try {
@@ -179,7 +223,7 @@ function load() {
       if (!Array.isArray(s.schedule)) s.schedule = [];
       if (!Array.isArray(s.atbats)) s.atbats = [];
       if (!Array.isArray(s.hitterPitches)) s.hitterPitches = [];
-      if (s.ui && s.ui.tab === 'roster') s.ui.tab = 'pitchers';
+      if (s.ui && (s.ui.tab === 'roster' || s.ui.tab === 'hitters')) s.ui.tab = 'pitchers';
       return s;
     }
   } catch (e) { console.warn('load failed', e); }
@@ -252,7 +296,7 @@ function toast(msg) {
 }
 
 function fmtClass(c) {
-  const map = { Freshman: 'Fr.', Sophomore: 'So.', Junior: 'Jr.', Senior: 'Sr.' };
+  const map = { '8th Grade': '8th', Freshman: 'Fr.', Sophomore: 'So.', Junior: 'Jr.', Senior: 'Sr.' };
   return map[c] || c;
 }
 
@@ -274,7 +318,7 @@ function render() {
   root.innerHTML = '';
   const views = {
     pitchers: renderRoster,
-    hitters: renderHitters,
+    hitters: renderRoster,
     opponents: renderOpponents,
     schedule: renderSchedule,
     game: renderGame,
@@ -289,29 +333,74 @@ function render() {
 /* ============================ ROSTER TAB =============================== */
 
 function renderRoster() {
+  // Profile routing — a tapped hitter or pitcher opens their full card.
   if (state.ui.openPitcherId) {
     const p = pitcherById(state.ui.openPitcherId);
     if (p) return renderPitcherProfile(p);
     state.ui.openPitcherId = null;
   }
-
-  const wrap = el('div');
-  wrap.appendChild(el('div', { class: 'section-head' }, [
-    el('h2', { text: 'Pitchers' }),
-    el('button', { class: 'btn btn-primary btn-sm', onclick: () => openPitcherForm() }, '+ Add Pitcher')
-  ]));
-
-  if (state.pitchers.length === 0) {
-    wrap.appendChild(el('div', { class: 'empty' }, [
-      el('p', { text: '⚾' }),
-      el('p', { text: 'No pitchers yet.' }),
-      el('p', { class: 'muted', text: 'Add the opposing pitchers you want to scout.' })
-    ]));
-    return wrap;
+  if (state.ui.openHitterId) {
+    const h = hitterById(state.ui.openHitterId);
+    if (h) return renderHitterProfile(h);
+    state.ui.openHitterId = null;
   }
 
-  state.pitchers.forEach(p => wrap.appendChild(pitcherCard(p)));
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'section-head' }, [el('h2', { text: 'Roster' })]));
+
+  /* ---- Hitters ---- */
+  wrap.appendChild(el('div', { class: 'roster-sub' }, [
+    el('h3', { text: `Hitters${state.hitters.length ? ` (${state.hitters.length})` : ''}` }),
+    el('div', {}, [
+      state.hitters.length ? el('button', { class: 'btn btn-sm', onclick: () => openAtBatForm() }, '+ Log AB') : null,
+      el('button', { class: 'btn btn-primary btn-sm', style: { marginLeft: '8px' }, onclick: () => openHitterForm() }, '+ Add')
+    ])
+  ]));
+  if (state.hitters.length === 0) {
+    wrap.appendChild(el('div', { class: 'empty compact' }, [
+      el('p', { class: 'muted', text: "No hitters yet. Add Carrollton's hitters to set lineups and track hitting stats." })
+    ]));
+  } else {
+    state.hitters.forEach(h => wrap.appendChild(hitterCard(h)));
+  }
+
+  /* ---- Pitchers ---- */
+  wrap.appendChild(el('div', { class: 'roster-sub', style: { marginTop: '22px' } }, [
+    el('h3', { text: `Pitchers${state.pitchers.length ? ` (${state.pitchers.length})` : ''}` }),
+    el('button', { class: 'btn btn-primary btn-sm', onclick: () => openPitcherForm() }, '+ Add')
+  ]));
+  if (state.pitchers.length === 0) {
+    wrap.appendChild(el('div', { class: 'empty compact' }, [
+      el('p', { class: 'muted', text: 'No pitchers yet. Add a pitcher to log games and build their card.' })
+    ]));
+  } else {
+    state.pitchers.forEach(p => wrap.appendChild(pitcherCard(p)));
+  }
+
   return wrap;
+}
+
+// One hitter's tappable summary card (used in the roster).
+function hitterCard(h) {
+  const line = hittingLine(hitterAtBats(h.id));
+  return el('div', { class: 'card card-tappable', onclick: () => { state.ui.openHitterId = h.id; save(); render(); } }, [
+    el('div', { class: 'pitcher-card' }, [
+      el('div', { class: `pitcher-num hand-${h.bats === 'L' ? 'L' : 'R'}`, text: h.number ? `#${h.number}` : (h.name[0] || '?').toUpperCase() }),
+      el('div', { class: 'pitcher-info' }, [
+        el('h3', { text: h.name }),
+        el('div', { class: 'pitcher-meta', text: [
+          h.classification ? fmtClass(h.classification) : null,
+          BATS_LABEL[h.bats] || 'Bats R',
+          h.position || null
+        ].filter(Boolean).join(' · ') }),
+        el('div', { class: 'pitcher-meta muted', text: line.pa ? `${line.avg} AVG · ${line.h}-${line.ab} · ${line.hr} HR` : 'No at-bats logged' })
+      ]),
+      el('div', { class: 'card-chevron' }, [
+        line.pa ? el('span', { class: 'card-count', text: `${line.pa} PA` }) : null,
+        el('span', { text: '›' })
+      ])
+    ])
+  ]);
 }
 
 function pitcherCard(p) {
@@ -408,51 +497,6 @@ function openPitcherForm(existing) {
 
 /* ======================= MY TEAM (HITTERS) TAB ======================== */
 
-function renderHitters() {
-  if (state.ui.openHitterId) {
-    const h = hitterById(state.ui.openHitterId);
-    if (h) return renderHitterProfile(h);
-    state.ui.openHitterId = null;
-  }
-
-  const wrap = el('div');
-  wrap.appendChild(el('div', { class: 'section-head' }, [
-    el('h2', { text: 'My Hitters' }),
-    el('div', {}, [
-      state.hitters.length ? el('button', { class: 'btn btn-sm', onclick: () => openAtBatForm() }, '+ Log AB') : null,
-      el('button', { class: 'btn btn-primary btn-sm', style: { marginLeft: '8px' }, onclick: () => openHitterForm() }, '+ Add')
-    ])
-  ]));
-
-  if (state.hitters.length === 0) {
-    wrap.appendChild(el('div', { class: 'empty' }, [
-      el('p', { text: '🥎' }),
-      el('p', { text: 'No hitters yet.' }),
-      el('p', { class: 'muted', text: "Add Carrollton's hitters so you can set the lineup and track their hitting stats." })
-    ]));
-    return wrap;
-  }
-
-  state.hitters.forEach(h => {
-    const line = hittingLine(hitterAtBats(h.id));
-    wrap.appendChild(el('div', { class: 'card card-tappable', onclick: () => { state.ui.openHitterId = h.id; save(); render(); } }, [
-      el('div', { class: 'pitcher-card' }, [
-        el('div', { class: `pitcher-num hand-${h.bats === 'L' ? 'L' : 'R'}`, text: h.number ? `#${h.number}` : (h.name[0] || '?').toUpperCase() }),
-        el('div', { class: 'pitcher-info' }, [
-          el('h3', { text: h.name }),
-          el('div', { class: 'pitcher-meta', text: [BATS_LABEL[h.bats] || 'Bats R', h.position || null].filter(Boolean).join(' · ') }),
-          el('div', { class: 'pitcher-meta muted', text: line.pa ? `${line.avg} AVG · ${line.h}-${line.ab} · ${line.hr} HR` : 'No at-bats logged' })
-        ]),
-        el('div', { class: 'card-chevron' }, [
-          line.pa ? el('span', { class: 'card-count', text: `${line.pa} PA` }) : null,
-          el('span', { text: '›' })
-        ])
-      ])
-    ]));
-  });
-  return wrap;
-}
-
 function renderHitterProfile(h) {
   const wrap = el('div');
   wrap.appendChild(el('div', { class: 'section-head' }, [
@@ -468,7 +512,7 @@ function renderHitterProfile(h) {
     el('div', { class: `profile-badge hand-${h.bats === 'L' ? 'L' : 'R'}`, text: h.number ? `#${h.number}` : (h.name[0] || '?').toUpperCase() }),
     el('div', {}, [
       el('h2', { style: { margin: 0 }, text: h.name }),
-      el('div', { class: 'muted', text: [BATS_LABEL[h.bats] || 'Bats R', h.position || null].filter(Boolean).join(' · ') })
+      el('div', { class: 'muted', text: [h.classification ? fmtClass(h.classification) : null, BATS_LABEL[h.bats] || 'Bats R', h.position || null].filter(Boolean).join(' · ') })
     ])
   ]));
 
@@ -594,8 +638,9 @@ function deleteHitter(h) {
 function openHitterForm(existing) {
   openPlayerEditor({
     title: existing ? 'Edit Hitter' : 'Add Hitter',
-    draft: existing ? JSON.parse(JSON.stringify(existing)) : { id: uid(), name: '', bats: 'R', number: '', position: '' },
+    draft: existing ? JSON.parse(JSON.stringify(existing)) : { id: uid(), name: '', bats: 'R', number: '', position: '', classification: 'Freshman' },
     showPitcher: false,
+    showClass: true,
     onSave: draft => {
       const idx = state.hitters.findIndex(h => h.id === draft.id);
       if (idx >= 0) state.hitters[idx] = draft; else state.hitters.push(draft);
@@ -741,9 +786,11 @@ function deleteOpponentPlayer(opp, pl) {
 }
 
 // Shared player editor sheet for hitters and opponent players.
-function openPlayerEditor({ title, draft, showPitcher, onSave }) {
+function openPlayerEditor({ title, draft, showPitcher, showClass, onSave }) {
   const nameInput = el('input', { type: 'text', value: draft.name, placeholder: 'Player name', autocomplete: 'off' });
   const numInput = el('input', { type: 'text', value: draft.number || '', placeholder: '#', inputmode: 'numeric', autocomplete: 'off' });
+  const classSelect = el('select', {},
+    CLASSIFICATIONS.map(c => el('option', { value: c, selected: c === draft.classification }, c)));
 
   const batsSeg = el('div', { class: 'segmented' }, BATS.map(b =>
     el('div', {
@@ -766,6 +813,10 @@ function openPlayerEditor({ title, draft, showPitcher, onSave }) {
     el('div', { class: 'field' }, [el('label', { text: 'Bats' }), batsSeg])
   ];
 
+  if (showClass) {
+    children.push(el('div', { class: 'field' }, [el('label', { text: 'Year' }), classSelect]));
+  }
+
   if (showPitcher) {
     const pitchChip = el('div', {
       class: 'chip' + (draft.isPitcher ? ' selected' : ''),
@@ -780,6 +831,7 @@ function openPlayerEditor({ title, draft, showPitcher, onSave }) {
       draft.name = nameInput.value.trim();
       if (!draft.name) { toast('Enter a name'); return; }
       draft.number = numInput.value.trim();
+      if (showClass) draft.classification = classSelect.value;
       onSave(draft);
       save(); closeModal(); render();
     } }, 'Save')
@@ -1083,7 +1135,7 @@ function renderGame() {
   if (state.pitchers.length === 0) {
     wrap.appendChild(el('div', { class: 'empty' }, [
       el('p', { text: 'Add a pitcher to scout first.' }),
-      el('button', { class: 'btn btn-primary', onclick: () => setTab('pitchers') }, 'Go to Pitchers')
+      el('button', { class: 'btn btn-primary', onclick: () => setTab('pitchers') }, 'Go to Roster')
     ]));
     return wrap;
   }
@@ -1890,7 +1942,7 @@ function renderChart() {
   if (!state.pitchers.length) {
     wrap.appendChild(el('div', { class: 'empty' }, [
       el('p', { text: 'Add a pitcher to chart first.' }),
-      el('button', { class: 'btn btn-primary', onclick: () => setTab('pitchers') }, 'Go to Pitchers')
+      el('button', { class: 'btn btn-primary', onclick: () => setTab('pitchers') }, 'Go to Roster')
     ]));
     return wrap;
   }
@@ -2046,7 +2098,7 @@ function renderHitterScout() {
     wrap.appendChild(el('div', { class: 'empty' }, [
       el('p', { text: '🥎' }),
       el('p', { text: 'Add your hitters first.' }),
-      el('button', { class: 'btn btn-primary', onclick: () => setTab('hitters') }, 'Go to Hitters')
+      el('button', { class: 'btn btn-primary', onclick: () => setTab('pitchers') }, 'Go to Roster')
     ]));
     return wrap;
   }
@@ -2286,7 +2338,7 @@ function renderSeasonStats() {
     const hBody = el('tbody');
     batters.forEach(h => {
       const l = hittingLine(hitterAtBats(h.id));
-      hBody.appendChild(el('tr', { class: 'season-row', onclick: () => { state.ui.tab = 'hitters'; state.ui.openHitterId = h.id; save(); setTab('hitters'); } }, [
+      hBody.appendChild(el('tr', { class: 'season-row', onclick: () => { state.ui.openHitterId = h.id; save(); setTab('pitchers'); } }, [
         el('td', { class: 'col-name', text: h.name }),
         el('td', { text: l.avg }), el('td', { text: l.obp }), el('td', { text: l.slg }), el('td', { text: l.ops }),
         el('td', { text: String(l.ab) }), el('td', { text: String(l.h) }), el('td', { text: String(l.hr) }),
