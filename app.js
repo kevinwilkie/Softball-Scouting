@@ -613,7 +613,10 @@ function renderOpponents() {
   const wrap = el('div');
   wrap.appendChild(el('div', { class: 'section-head' }, [
     el('h2', { text: 'Opponents' }),
-    el('button', { class: 'btn btn-primary btn-sm', onclick: () => openOpponentForm() }, '+ Add Team')
+    el('div', {}, [
+      el('button', { class: 'btn btn-sm', onclick: openBulkTeams }, 'Add many'),
+      el('button', { class: 'btn btn-primary btn-sm', style: { marginLeft: '8px' }, onclick: () => openOpponentForm() }, '+ Add Team')
+    ])
   ]));
 
   if (state.opponents.length === 0) {
@@ -659,6 +662,30 @@ function renderOpponentDetail(opp) {
   }
   players.forEach(pl => wrap.appendChild(playerCard(pl, () => openPlayerForm(opp, pl), () => deleteOpponentPlayer(opp, pl))));
   return wrap;
+}
+
+// Paste a list of team names (one per line) to create them all at once.
+function openBulkTeams() {
+  const ta = el('textarea', { class: 'import-ta', placeholder: 'One team per line\nBremen\nVilla Rica\nNorthgate' });
+  openModal(el('div', {}, [
+    el('h3', { text: 'Add Teams' }),
+    el('p', { class: 'sheet-sub', text: 'Paste team names, one per line. Existing teams are skipped.' }),
+    el('div', { class: 'field' }, [ta]),
+    el('div', { style: { display: 'flex', gap: '10px', marginTop: '8px' } }, [
+      el('button', { class: 'btn btn-block', onclick: closeModal }, 'Cancel'),
+      el('button', { class: 'btn btn-primary btn-block', onclick: () => {
+        const names = (ta.value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        let added = 0;
+        names.forEach(name => {
+          if (state.opponents.some(o => o.name.toLowerCase() === name.toLowerCase())) return;
+          state.opponents.push({ id: uid(), name, players: [] });
+          added++;
+        });
+        save(); closeModal(); render();
+        toast(added ? `Added ${added} team${added === 1 ? '' : 's'}` : 'No new teams');
+      } }, 'Add Teams')
+    ])
+  ]));
 }
 
 function openOpponentForm(existing) {
