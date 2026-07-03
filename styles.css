@@ -477,6 +477,18 @@ button { font-family: inherit; }
 }
 .game-row .gr-main { font-weight: 600; font-size: 15px; }
 .game-row .gr-sub { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+.game-row .gr-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* Reset/Delete controls at the bottom of an open game */
+.game-danger {
+  display: flex; gap: 10px; justify-content: center;
+  margin: 22px 0 4px;
+}
+.btn-ghost-danger {
+  background: transparent; border-color: transparent;
+  color: var(--text-dim); font-size: 13px;
+}
+.btn-ghost-danger:active { color: var(--red); }
 
 /* batter-hand toggle in scoreboard */
 .sb-hand {

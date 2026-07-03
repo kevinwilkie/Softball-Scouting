@@ -1035,6 +1035,43 @@ function createGame(pitcherId, opponentId, date) {
   return g;
 }
 
+// Permanently remove a game and unlink it from the schedule.
+function deleteGame(g) {
+  if (!g) return;
+  const p = pitcherById(g.pitcherId);
+  const label = `${p ? p.name : 'this game'} vs ${gameOpponentName(g)} · ${g.date}`;
+  if (!confirm(`Delete this game log?\n\n${label}\n\nThis can't be undone.`)) return;
+  state.games = state.games.filter(x => x.id !== g.id);
+  (state.schedule || []).forEach(s => { if (s.gameId === g.id) s.gameId = null; });
+  if (state.activeGameId === g.id) state.activeGameId = null;
+  save();
+  render();
+  toast('Game deleted');
+}
+
+// Clear everything logged in a game but keep its setup (pitcher, opponent,
+// date, catcher, lineups) so you can start the same matchup fresh.
+function resetGame(g) {
+  if (!g) return;
+  if (!confirm('Reset this game? Every logged pitch, at-bat, and the score will be cleared. The pitcher, opponent, and lineups stay.')) return;
+  g.pitches = [];
+  g.abNotes = {};
+  g.inning = 1;
+  g.half = 'top';
+  g.outs = 0;
+  g.balls = 0;
+  g.strikes = 0;
+  g.bases = [false, false, false];
+  g.batterNo = 1;
+  g.myIdx = 0;
+  g.oppIdx = 0;
+  g.score = { me: 0, opp: 0 };
+  g.final = false;
+  save();
+  render();
+  toast('Game reset');
+}
+
 function gameOpponentName(g) {
   return (g.opponentId && opponentById(g.opponentId)?.name) || g.opponent || 'Opponent';
 }
@@ -1073,6 +1110,10 @@ function renderGame() {
   wrap.appendChild(lineupPanel(g));
   wrap.appendChild(strikeZonePanel(g));
   wrap.appendChild(pitchLog(g));
+  wrap.appendChild(el('div', { class: 'game-danger' }, [
+    el('button', { class: 'btn btn-sm btn-ghost-danger', onclick: () => resetGame(g) }, 'Reset game'),
+    el('button', { class: 'btn btn-sm btn-ghost-danger', onclick: () => deleteGame(g) }, 'Delete game')
+  ]));
   return wrap;
 }
 
@@ -1242,7 +1283,10 @@ function renderGamePicker() {
           ]),
           el('div', { class: 'gr-sub', text: `vs ${gameOpponentName(g)} · ${g.date} · ${g.pitches.length} pitches` })
         ]),
-        el('button', { class: 'btn btn-sm', onclick: () => { state.activeGameId = g.id; save(); render(); } }, 'Open')
+        el('div', { class: 'gr-actions' }, [
+          el('button', { class: 'btn btn-sm', onclick: () => { state.activeGameId = g.id; save(); render(); } }, 'Open'),
+          el('button', { class: 'btn btn-sm btn-danger', title: 'Delete game', onclick: () => deleteGame(g) }, 'Delete')
+        ])
       ]));
     });
   }
@@ -1805,7 +1849,8 @@ function renderPitcherProfile(p) {
         } }, 'View stats'),
         !g.final
           ? el('button', { class: 'btn btn-sm', onclick: () => { state.activeGameId = g.id; state.ui.openPitcherId = null; setTab('game'); } }, 'Resume')
-          : null
+          : null,
+        el('button', { class: 'btn btn-sm btn-danger', onclick: () => deleteGame(g) }, 'Delete')
       ])
     ]));
   });
