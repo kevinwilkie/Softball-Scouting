@@ -1,5 +1,5 @@
 /* Minimal offline cache so the app works at the field with no signal. */
-const CACHE = 'chs-scout-v20';
+const CACHE = 'chs-scout-v21';
 const ASSETS = [
   './',
   './index.html',
@@ -8,7 +8,7 @@ const ASSETS = [
   './firebase-config.js',
   './sync.js',
   './manifest.json',
-  './icon.svg'
+  './icon.svg?v=21'
 ];
 
 self.addEventListener('install', e => {
