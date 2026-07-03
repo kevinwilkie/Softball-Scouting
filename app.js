@@ -25,6 +25,17 @@ const abbr = name => PITCH_ABBR[name] || (name || '?').slice(0, 2).toUpperCase()
 // For charting opposing pitchers you usually only read velocity, not grip.
 const SCOUT_PITCH_TYPES = ['Hard', 'Soft'];
 
+// Pitch-call and result codes matching the paper Game Day Pitching Chart.
+const CHART_ABBR = {
+  Fastball: 'F', Changeup: 'CH', Curveball: 'C', Riseball: 'R',
+  Dropball: 'D', Screwball: 'S', 'Drop Curve': 'DC', Knuckle: 'KN', 'Pitch Out': 'PO'
+};
+const chartAbbr = name => CHART_ABBR[name] || (name || '?').slice(0, 2).toUpperCase();
+const RESULT_ABBR = {
+  ball: 'B', called_strike: 'CK', swing_strike: 'K', foul: 'FL', hbp: 'HBP',
+  in_play_out: 'OUT', single: '1B', double: '2B', triple: '3B', hr: 'HR', hit: '1B'
+};
+
 const BATS = ['R', 'L', 'S']; // right / left / switch
 const BATS_LABEL = { R: 'Bats R', L: 'Bats L', S: 'Switch' };
 const POSITIONS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DP', 'FLEX', 'UTIL'];
@@ -265,6 +276,7 @@ function render() {
     opponents: renderOpponents,
     schedule: renderSchedule,
     game: renderGame,
+    chart: renderChart,
     abscout: renderHitterScout,
     stats: renderStats
   };
@@ -968,8 +980,10 @@ function createGame(pitcherId, opponentId, date) {
     pitcherId,
     opponentId: opponentId || null,
     opponent: opponentId ? (opponentById(opponentId)?.name || '') : '',
+    catcher: '',
     date: date || new Date().toISOString().slice(0, 10),
     pitches: [],
+    abNotes: {},          // per-at-bat notes, keyed by batterNo
     inning: 1,
     half: 'top',
     outs: 0,
@@ -1144,6 +1158,7 @@ function renderGamePicker() {
   const pitcherSelect = el('select', {},
     state.pitchers.map(p => el('option', { value: p.id }, `${p.name} (${p.hand})`)));
   const dateInput = el('input', { type: 'date', value: new Date().toISOString().slice(0, 10) });
+  const catcherInput = el('input', { type: 'text', placeholder: 'Catcher (optional)', autocomplete: 'off' });
 
   // Pre-fill from a "Log game" tap on the Schedule tab.
   const prefill = state.ui.prefill;
@@ -1167,10 +1182,14 @@ function renderGamePicker() {
       ? el('div', { class: 'muted', style: { marginTop: '-6px', marginBottom: '10px', fontSize: '13px' } },
           'Tip: add a team on the Opponents tab to set their lineup.')
       : null,
-    el('div', { class: 'field' }, [el('label', { text: 'Date' }), dateInput]),
+    el('div', { class: 'row-2' }, [
+      el('div', { class: 'field' }, [el('label', { text: 'Date' }), dateInput]),
+      el('div', { class: 'field' }, [el('label', { text: 'Catcher' }), catcherInput])
+    ]),
     el('button', { class: 'btn btn-primary btn-block', onclick: () => {
       if (!pitcherSelect.value) { toast('Pick a pitcher'); return; }
       const g = createGame(pitcherSelect.value, oppSelect.value || null, dateInput.value);
+      g.catcher = catcherInput.value.trim();
       // Link back to the schedule entry this was launched from, if any.
       if (prefill && prefill.scheduleId) {
         const se = state.schedule.find(s => s.id === prefill.scheduleId);
@@ -1769,6 +1788,105 @@ function lineStat(label, value) {
   return el('div', { class: 'line-stat' }, [
     el('div', { class: 'ls-val', text: String(value) }),
     el('div', { class: 'ls-label', text: label })
+  ]);
+}
+
+/* ===================== GAME DAY PITCH CHART ========================== */
+
+// Group a game's pitches into at-bats (by batterNo), newest first.
+function chartAtBats(g) {
+  const byAB = {};
+  const order = [];
+  (g.pitches || []).forEach(pt => {
+    const k = pt.batterNo || 1;
+    if (!byAB[k]) {
+      byAB[k] = { batterNo: k, inning: pt.inning, half: pt.half, outs: pt.outs,
+        batterName: pt.batterName, batterHand: pt.batterHand, side: pt.battingSide, pitches: [] };
+      order.push(byAB[k]);
+    }
+    byAB[k].pitches.push(pt);
+  });
+  return order;
+}
+
+function renderChart() {
+  const wrap = el('div');
+  const g = activeGame();
+
+  if (!state.pitchers.length) {
+    wrap.appendChild(el('div', { class: 'empty' }, [
+      el('p', { text: 'Add a pitcher to chart first.' }),
+      el('button', { class: 'btn btn-primary', onclick: () => setTab('pitchers') }, 'Go to Pitchers')
+    ]));
+    return wrap;
+  }
+  if (!g) {
+    wrap.appendChild(el('div', { class: 'section-head' }, [el('h2', { text: 'Pitch Chart' })]));
+    wrap.appendChild(renderGamePicker());
+    return wrap;
+  }
+
+  const p = pitcherById(g.pitcherId);
+
+  // Header — mirrors the paper chart (date, opponent, pitcher, catcher).
+  wrap.appendChild(el('div', { class: 'section-head' }, [
+    el('h2', { text: 'Pitch Chart' }),
+    el('button', { class: 'btn btn-sm', onclick: () => { state.activeGameId = null; save(); render(); } }, 'Games')
+  ]));
+  const catcherInput = el('input', { type: 'text', value: g.catcher || '', placeholder: 'Catcher', autocomplete: 'off',
+    oninput: e => { g.catcher = e.target.value; save(); } });
+  wrap.appendChild(el('div', { class: 'card chart-head' }, [
+    el('div', { class: 'chart-head-row' }, [
+      el('div', {}, [el('span', { class: 'chart-lbl', text: 'PITCHER' }), el('div', { class: 'chart-val', text: p ? p.name : '—' })]),
+      el('div', {}, [el('span', { class: 'chart-lbl', text: 'OPPONENT' }), el('div', { class: 'chart-val', text: gameOpponentName(g) })]),
+      el('div', {}, [el('span', { class: 'chart-lbl', text: 'DATE' }), el('div', { class: 'chart-val', text: g.date })])
+    ]),
+    el('div', { class: 'field', style: { margin: '10px 0 0' } }, [el('label', { text: 'Catcher' }), catcherInput])
+  ]));
+
+  // Tap zone to add a pitch (same pipeline as Log).
+  wrap.appendChild(strikeZonePanel(g));
+
+  // Undo + running line
+  const line = pitchingLine(g.pitches);
+  wrap.appendChild(el('div', { class: 'log-head' }, [
+    el('div', { class: 'muted', text: `${g.pitches.length} pitches · ${line.strikePct}% strikes` }),
+    g.pitches.length ? el('button', { class: 'btn btn-sm', onclick: () => undoLast(g) }, '↶ Undo last') : null
+  ]));
+
+  // At-bat boxes (newest first)
+  const abs = chartAtBats(g).reverse();
+  abs.forEach(ab => wrap.appendChild(chartAtBatBox(g, ab)));
+
+  // legend
+  wrap.appendChild(el('div', { class: 'chart-legend' },
+    'F Fastball · CH Change · C Curve · R Rise · D Drop · S Screw · PO Pitch Out · B Ball · K Swing · CK Called · FL Foul · OUT / 1B·2B·3B·HR'));
+  return wrap;
+}
+
+function chartAtBatBox(g, ab) {
+  const hand = ab.batterHand ? ` · ${ab.batterHand}HB` : '';
+  const who = ab.batterName || `Batter #${ab.batterNo}`;
+  const cell = (txt, cls) => el('span', { class: 'cs-cell ' + (cls || '') , text: txt });
+  const row = (label, cls, vals) => el('div', { class: 'cs-row ' + (cls || '') },
+    [el('span', { class: 'cs-label', text: label })].concat(vals.map(v => cell(v.t, v.c))));
+
+  const notesKey = ab.batterNo;
+  const notesInput = el('input', { type: 'text', class: 'chart-notes', value: (g.abNotes && g.abNotes[notesKey]) || '',
+    placeholder: 'Notes', autocomplete: 'off',
+    oninput: e => { g.abNotes = g.abNotes || {}; g.abNotes[notesKey] = e.target.value; save(); } });
+
+  return el('div', { class: 'card chart-ab' }, [
+    el('div', { class: 'chart-ab-head' }, [
+      el('span', { class: 'chart-ab-who', text: `${who}${hand}` }),
+      el('span', { class: 'muted', text: `Inn ${ab.inning} · ${ab.outs} out${ab.outs === 1 ? '' : 's'}` })
+    ]),
+    el('div', { class: 'chart-seq' }, [
+      row('CALL', 'r-call', ab.pitches.map(p => ({ t: chartAbbr(p.pitchType) }))),
+      row('LOC', 'r-loc', ab.pitches.map(p => ({ t: String(p.zone) }))),
+      row('RSLT', 'r-rslt', ab.pitches.map(p => ({ t: RESULT_ABBR[p.result] || '?', c: RESULT_TONE[p.result] })))
+    ]),
+    notesInput
   ]);
 }
 

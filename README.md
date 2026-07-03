@@ -98,6 +98,19 @@ game pitch-by-pitch:
 
 You can run multiple games and switch between them. Each game is saved.
 
+### Chart tab (game-day pitch chart)
+A digital version of the Carrollton Trojans paper pitch chart. Start (or open) a
+game — with **date, opponent, pitcher, and catcher** in the header — then tap
+the strike zone to log each pitch. Pitches are grouped into **at-bat boxes**,
+each showing the batter, inning, outs, and three rows per pitch:
+- **CALL** — pitch type as a code (F, CH, C, R, D, S, PO)
+- **LOC** — the strike-zone location
+- **RSLT** — result (B ball, K swing, CK called, FL foul, OUT, 1B/2B/3B/HR)
+
+Each at-bat has a **Notes** field, and a code legend runs along the bottom. It
+shares the same game data as the Log tab, so everything you chart still feeds
+the pitcher's card and the season/scouting stats.
+
 ### At-Bat tab (live opponent-pitcher scouting)
 Real-time charting of how opposing pitchers attack **your** hitters. Pick the
 hitter at the plate, set the opposing pitcher (name + throws R/L + opponent),

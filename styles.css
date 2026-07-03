@@ -526,6 +526,28 @@ button { font-family: inherit; }
 .row-2 { display: flex; gap: 10px; }
 .row-2 .field { flex: 1; }
 
+/* game day pitch chart */
+.chart-head-row { display: flex; gap: 12px; }
+.chart-head-row > div { flex: 1; min-width: 0; }
+.chart-lbl { font-size: 10px; font-weight: 700; color: var(--text-dim); letter-spacing: 0.5px; }
+.chart-val { font-size: 14px; font-weight: 700; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-ab { padding: 12px 14px; }
+.chart-ab-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.chart-ab-who { font-weight: 700; font-size: 15px; }
+.chart-seq { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cs-row { display: flex; align-items: stretch; gap: 4px; margin-bottom: 4px; }
+.cs-row .cs-label { flex: 0 0 42px; display: grid; place-items: center; font-size: 10px; font-weight: 800; color: var(--text-dim); }
+.cs-cell {
+  flex: 0 0 40px; min-height: 30px; display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 13px; font-weight: 700; background: var(--bg);
+}
+.cs-row.r-call .cs-cell { color: var(--text); }
+.cs-row.r-loc .cs-cell { color: var(--text-dim); }
+.chart-notes { width: 100%; margin-top: 8px; padding: 8px 10px; font-size: 13px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); }
+.chart-legend { font-size: 11px; color: var(--text-dim); line-height: 1.7; padding: 4px 2px 8px; }
+
 /* at-bat scout count row */
 .scout-count {
   display: flex; align-items: center; gap: 10px;
