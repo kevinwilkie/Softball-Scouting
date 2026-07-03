@@ -450,6 +450,8 @@ button { font-family: inherit; }
 }
 .auth-btn.ghost { background: transparent; color: var(--text-dim); border-color: var(--border); margin-top: 10px; }
 .auth-err { color: var(--red); font-size: 13px; margin-top: 16px; min-height: 1em; line-height: 1.4; }
+.auth-hint { color: var(--text-dim); font-size: 12px; margin-top: 20px; line-height: 1.5; }
+.auth-hint b { color: var(--text); }
 
 /* stats */
 .stat-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px; }

@@ -129,12 +129,15 @@
         '<button class="auth-btn" id="auth-google">Sign in with Google</button>' +
         '<button class="auth-btn ghost hidden" id="auth-switch">Use a different account</button>' +
         '<p class="auth-err" id="auth-err"></p>' +
+        '<p class="auth-hint">Tip: open this in <b>Safari</b> or <b>Chrome</b>. If you tapped the link from a text or email, the built-in mini-browser blocks Google sign-in — tap &#8942; or the share icon and choose &ldquo;Open in Safari.&rdquo;</p>' +
       '</div>';
     document.body.appendChild(gate);
     gate.querySelector('#auth-google').addEventListener('click', () => {
       gate.querySelector('#auth-err').textContent = '';
       const p = new firebase.auth.GoogleAuthProvider();
-      auth.signInWithPopup(p).catch(e => { gate.querySelector('#auth-err').textContent = e.message; });
+      auth.signInWithPopup(p).catch(e => {
+        gate.querySelector('#auth-err').textContent = friendlyAuthError(e);
+      });
     });
     gate.querySelector('#auth-switch').addEventListener('click', () => auth.signOut());
   }
@@ -151,4 +154,15 @@
   }
 
   function hideGate() { if (gate) gate.classList.add('hidden'); }
+
+  // Turn raw Firebase auth errors into plain-language guidance.
+  function friendlyAuthError(e) {
+    const msg = (e && e.message) || '';
+    const code = (e && e.code) || '';
+    if (/initial state|sessionStorage|storage-partitioned|popup-blocked|cancelled-popup|popup-closed/i.test(msg + code)) {
+      return "Sign-in couldn't finish here — this usually means the page opened inside a text/email mini-browser. Tap the ⋮ or share icon and choose “Open in Safari” (or Chrome), then try again.";
+    }
+    if (/network/i.test(msg + code)) return 'Network problem — check your connection and try again.';
+    return msg || 'Sign-in failed. Try again.';
+  }
 })();
