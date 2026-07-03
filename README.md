@@ -111,6 +111,12 @@ Each at-bat has a **Notes** field, and a code legend runs along the bottom. It
 shares the same game data as the Log tab, so everything you chart still feeds
 the pitcher's card and the season/scouting stats.
 
+Set the **lineup** (right on this tab) so batters are identified. Once the order
+cycles back around, a **"Vs [batter]"** panel appears under the strike zone
+showing how you called pitches to that hitter in their **earlier at-bats today**
+(each prior at-bat's Call / Location / Result and how it ended) — so you can
+adjust your sequence the next time they're up.
+
 ### At-Bat tab (live opponent-pitcher scouting)
 Real-time charting of how opposing pitchers attack **your** hitters. Pick the
 hitter at the plate, set the opposing pitcher (name + throws R/L + opponent),

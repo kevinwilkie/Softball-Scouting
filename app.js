@@ -1844,8 +1844,15 @@ function renderChart() {
     el('div', { class: 'field', style: { margin: '10px 0 0' } }, [el('label', { text: 'Catcher' }), catcherInput])
   ]));
 
+  // Lineup (so batters are identified across at-bats)
+  wrap.appendChild(lineupPanel(g));
+
   // Tap zone to add a pitch (same pipeline as Log).
   wrap.appendChild(strikeZonePanel(g));
+
+  // How the current batter was pitched earlier today (once the lineup cycles).
+  const history = batterHistoryPanel(g);
+  if (history) wrap.appendChild(history);
 
   // Undo + running line
   const line = pitchingLine(g.pitches);
@@ -1864,13 +1871,21 @@ function renderChart() {
   return wrap;
 }
 
+// The Call / Loc / Result rows for a pitch sequence.
+function chartSeq(pitches) {
+  const cell = (txt, cls) => el('span', { class: 'cs-cell ' + (cls || ''), text: txt });
+  const row = (label, cls, vals) => el('div', { class: 'cs-row ' + cls },
+    [el('span', { class: 'cs-label', text: label })].concat(vals));
+  return el('div', { class: 'chart-seq' }, [
+    row('CALL', 'r-call', pitches.map(p => cell(chartAbbr(p.pitchType)))),
+    row('LOC', 'r-loc', pitches.map(p => cell(String(p.zone)))),
+    row('RSLT', 'r-rslt', pitches.map(p => cell(RESULT_ABBR[p.result] || '?', RESULT_TONE[p.result])))
+  ]);
+}
+
 function chartAtBatBox(g, ab) {
   const hand = ab.batterHand ? ` · ${ab.batterHand}HB` : '';
   const who = ab.batterName || `Batter #${ab.batterNo}`;
-  const cell = (txt, cls) => el('span', { class: 'cs-cell ' + (cls || '') , text: txt });
-  const row = (label, cls, vals) => el('div', { class: 'cs-row ' + (cls || '') },
-    [el('span', { class: 'cs-label', text: label })].concat(vals.map(v => cell(v.t, v.c))));
-
   const notesKey = ab.batterNo;
   const notesInput = el('input', { type: 'text', class: 'chart-notes', value: (g.abNotes && g.abNotes[notesKey]) || '',
     placeholder: 'Notes', autocomplete: 'off',
@@ -1881,13 +1896,52 @@ function chartAtBatBox(g, ab) {
       el('span', { class: 'chart-ab-who', text: `${who}${hand}` }),
       el('span', { class: 'muted', text: `Inn ${ab.inning} · ${ab.outs} out${ab.outs === 1 ? '' : 's'}` })
     ]),
-    el('div', { class: 'chart-seq' }, [
-      row('CALL', 'r-call', ab.pitches.map(p => ({ t: chartAbbr(p.pitchType) }))),
-      row('LOC', 'r-loc', ab.pitches.map(p => ({ t: String(p.zone) }))),
-      row('RSLT', 'r-rslt', ab.pitches.map(p => ({ t: RESULT_ABBR[p.result] || '?', c: RESULT_TONE[p.result] })))
-    ]),
+    chartSeq(ab.pitches),
     notesInput
   ]);
+}
+
+// Completed at-bats for a batter (by id) earlier in this game.
+function priorAtBatsFor(g, batterId, beforeNo) {
+  const byAB = {}; const order = [];
+  (g.pitches || []).forEach(pt => {
+    if (!batterId || pt.batterId !== batterId) return;
+    if ((pt.batterNo || 0) >= beforeNo) return;
+    const k = pt.batterNo;
+    if (!byAB[k]) { byAB[k] = { batterNo: k, inning: pt.inning, pitches: [] }; order.push(byAB[k]); }
+    byAB[k].pitches.push(pt);
+  });
+  return order;
+}
+
+// Short outcome label for a completed at-bat.
+function abOutcome(pitches) {
+  const last = pitches[pitches.length - 1];
+  if (!last) return '';
+  const e = atBatEnd(last);
+  return { K: 'Strikeout', BB: 'Walk', H: 'Hit', OUT: 'Out', HBP: 'HBP' }[e] || RESULT_LABEL[last.result] || '';
+}
+
+// Panel showing how the current batter was pitched in earlier at-bats today.
+function batterHistoryPanel(g) {
+  const cb = currentBatter(g);
+  if (!cb || !cb.player || !cb.player.id) return null;
+  const priors = priorAtBatsFor(g, cb.player.id, g.batterNo);
+  if (!priors.length) return null;
+
+  const card = el('div', { class: 'card history-card' }, [
+    el('div', { class: 'history-head' }, [
+      el('span', { class: 'history-title', text: `Vs ${cb.player.name}` }),
+      el('span', { class: 'muted', text: `${priors.length} earlier AB${priors.length === 1 ? '' : 's'} today` })
+    ])
+  ]);
+  priors.slice().reverse().forEach(ab => {
+    card.appendChild(el('div', { class: 'history-ab' }, [
+      el('div', { class: 'history-ab-head muted', text: `Inn ${ab.inning} · ${ab.pitches.length} pitch${ab.pitches.length === 1 ? '' : 'es'} · ${abOutcome(ab.pitches)}` }),
+      chartSeq(ab.pitches)
+    ]));
+  });
+  return card;
 }
 
 /* ================== LIVE HITTER SCOUT (AT BAT) ======================= */
