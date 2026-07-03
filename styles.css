@@ -859,3 +859,7 @@ button { font-family: inherit; }
   box-shadow: inset 3px 0 0 var(--accent);
 }
 .drawer-sep { height: 1px; background: var(--border); margin: 8px 18px; }
+
+/* SVG glyphs used as tab / drawer icons (e.g. the bat) */
+.tab-icon svg { width: 20px; height: 20px; display: block; }
+.di-icon svg { width: 20px; height: 20px; display: block; }

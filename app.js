@@ -3250,20 +3250,22 @@ if ('serviceWorker' in navigator) {
 
 /* ---------------------- Slide-out nav drawer --------------------------- */
 
+const BAT_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5.44 19.84 L21.04 6.64 A2.6 2.6 0 0 0 17.36 2.96 L4.16 18.56 A0.9 0.9 0 0 0 5.44 19.84 Z"/><circle cx="4.2" cy="19.8" r="1.7"/></svg>';
+
 // Every destination lives in the left drawer; the bottom bar shows a subset.
 const NAV_ITEMS = [
   { tab: 'pitchers',  icon: '👥', label: 'Roster' },
   { tab: 'opponents', icon: '⚔️', label: 'Teams' },
   { tab: 'schedule',  icon: '📅', label: 'Schedule' },
   { tab: 'game',      icon: '🎯', label: 'Log Game' },
-  { tab: 'chart',     icon: '📋', label: 'Chart' },
-  { tab: 'abscout',   icon: '🥎', label: 'At Bat' },
+  { tab: 'chart',     icon: '🥎', label: 'Chart' },
+  { tab: 'abscout',   icon: BAT_SVG, svg: true, label: 'At Bat' },
   { tab: 'stats',     icon: '📊', label: 'Stats' }
 ];
 
-function drawerItem(icon, label, active, onClick) {
+function drawerItem(icon, label, active, onClick, isSvg) {
   return el('div', { class: 'drawer-item' + (active ? ' active' : ''), onclick: onClick }, [
-    el('span', { class: 'di-icon', text: icon }),
+    el('span', isSvg ? { class: 'di-icon', html: icon } : { class: 'di-icon', text: icon }),
     el('span', { text: label })
   ]);
 }
@@ -3281,7 +3283,7 @@ function openDrawer() {
     ])
   ]));
   NAV_ITEMS.forEach(it => panel.appendChild(
-    drawerItem(it.icon, it.label, state.ui.tab === it.tab, () => { closeDrawer(); setTab(it.tab); })));
+    drawerItem(it.icon, it.label, state.ui.tab === it.tab, () => { closeDrawer(); setTab(it.tab); }, it.svg)));
   panel.appendChild(el('div', { class: 'drawer-sep' }));
   panel.appendChild(drawerItem('📖', 'How to use this app', state.ui.tab === 'guide', () => { closeDrawer(); openGuide(); }));
   panel.appendChild(drawerItem('⚙️', 'Team & Backup', false, () => { closeDrawer(); openBackupMenu(); }));
