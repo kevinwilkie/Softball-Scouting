@@ -1,5 +1,7 @@
-/* Minimal offline cache so the app works at the field with no signal. */
-const CACHE = 'chs-scout-v26';
+/* Service worker: network-first for the app shell so updates always reach the
+   device when online, with a cache fallback so it still works at the field with
+   no signal. */
+const CACHE = 'chs-scout-v27';
 const ASSETS = [
   './',
   './index.html',
@@ -24,11 +26,18 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+  // Let cross-origin requests (e.g. Firebase SDK on gstatic) go straight to the
+  // network — don't cache or intercept them.
+  if (url.origin !== self.location.origin) return;
+
+  // Network-first: always try the network so the newest files win, and fall
+  // back to the cached copy only when offline.
   e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
+    fetch(e.request).then(res => {
       const copy = res.clone();
       caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
       return res;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(() => caches.match(e.request).then(hit => hit || caches.match('./index.html')))
   );
 });

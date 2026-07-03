@@ -2803,8 +2803,18 @@ function importBackup(file) {
 /* ----------------------------- Boot ------------------------------------ */
 
 if ('serviceWorker' in navigator) {
+  // When a new service worker takes control, reload once so the latest code
+  // and assets are used immediately (no more getting stuck on an old version).
+  let reloadedForUpdate = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloadedForUpdate) return;
+    reloadedForUpdate = true;
+    window.location.reload();
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js')
+      .then(reg => { reg.update(); })
+      .catch(() => {});
   });
 }
 
