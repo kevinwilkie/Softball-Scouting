@@ -153,6 +153,7 @@ const RESULT_LABEL = Object.assign(
 /* ----------------------------- State / storage ------------------------- */
 
 const STORE_KEY = 'chs-softball-scout-v1';
+let saveWarned = false; // guards the "storage full" toast so it fires once
 
 const defaultState = () => ({
   pitchers: [],     // {id, name, classification, hand, pitches:[], opponentId?}
@@ -246,8 +247,17 @@ function load() {
 }
 
 function save() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
-  catch (e) { console.warn('save failed', e); }
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    saveWarned = false;
+  } catch (e) {
+    console.warn('save failed', e);
+    // Storage full (or blocked): warn the coach so they don't lose data silently.
+    if (!saveWarned && typeof toast === 'function') {
+      saveWarned = true;
+      toast("Couldn't save — phone storage may be full. Export a backup.");
+    }
+  }
   // Push changes to the shared database when team-sync is active (no-op otherwise).
   if (window.__syncPush) window.__syncPush();
 }
@@ -376,7 +386,12 @@ function renderRoster() {
       el('p', { class: 'muted', text: "No hitters yet. Add Carrollton's hitters to set lineups and track hitting stats." })
     ]));
   } else {
-    state.hitters.forEach(h => wrap.appendChild(hitterCard(h)));
+    const cards = state.hitters.map(h => ({
+      node: hitterCard(h),
+      text: `${h.name} ${h.position || ''} ${h.classification || ''}`.toLowerCase()
+    }));
+    if (cards.length > SEARCH_THRESHOLD) wrap.appendChild(searchFilter('Search hitters…', cards));
+    cards.forEach(c => wrap.appendChild(c.node));
   }
 
   /* ---- Pitchers ---- */
@@ -389,10 +404,28 @@ function renderRoster() {
       el('p', { class: 'muted', text: 'No pitchers yet. Add a pitcher to log games and build their card.' })
     ]));
   } else {
-    state.pitchers.forEach(p => wrap.appendChild(pitcherCard(p)));
+    const cards = state.pitchers.map(p => ({
+      node: pitcherCard(p),
+      text: `${p.name} ${p.classification || ''}`.toLowerCase()
+    }));
+    if (cards.length > SEARCH_THRESHOLD) wrap.appendChild(searchFilter('Search pitchers…', cards));
+    cards.forEach(c => wrap.appendChild(c.node));
   }
 
   return wrap;
+}
+
+const SEARCH_THRESHOLD = 12;
+
+// A search box that shows/hides pre-built cards in place — no re-render, so the
+// input keeps focus while typing. `entries` = [{node, text}] with text lowercased.
+function searchFilter(placeholder, entries) {
+  const input = el('input', { type: 'search', class: 'list-search', placeholder, autocomplete: 'off' });
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    entries.forEach(e => { e.node.style.display = (!q || e.text.indexOf(q) !== -1) ? '' : 'none'; });
+  });
+  return input;
 }
 
 // One hitter's tappable summary card (used in the roster).
@@ -559,7 +592,10 @@ function renderHitterProfile(h) {
         el('div', { text: `${r ? r.label : a.result}${a.rbi ? ` · ${a.rbi} RBI` : ''}` }),
         el('div', { class: 'log-sub', text: `${a.date}${a.opponentName || (a.opponentId && opponentById(a.opponentId)?.name) ? ' · vs ' + (a.opponentName || opponentById(a.opponentId).name) : ''}` })
       ]),
-      el('button', { class: 'log-del', onclick: () => { state.atbats = state.atbats.filter(x => x.id !== a.id); save(); render(); } }, '×')
+      el('button', { class: 'log-del', onclick: () => {
+        if (!confirm(`Delete this at-bat (${r ? r.label : a.result})?`)) return;
+        state.atbats = state.atbats.filter(x => x.id !== a.id); save(); render();
+      } }, '×')
     ]));
   });
   wrap.appendChild(log);
@@ -690,15 +726,18 @@ function renderOpponents() {
     return wrap;
   }
 
-  state.opponents.forEach(o => {
-    wrap.appendChild(el('div', { class: 'game-row' }, [
+  const cards = state.opponents.map(o => ({
+    node: el('div', { class: 'game-row' }, [
       el('div', {}, [
         el('div', { class: 'gr-main', text: o.name }),
         el('div', { class: 'gr-sub', text: `${(o.players || []).length} player${(o.players || []).length === 1 ? '' : 's'}` })
       ]),
       el('button', { class: 'btn btn-sm', onclick: () => { state.ui.openOpponentId = o.id; save(); render(); } }, 'Open')
-    ]));
-  });
+    ]),
+    text: (o.name || '').toLowerCase()
+  }));
+  if (cards.length > SEARCH_THRESHOLD) wrap.appendChild(searchFilter('Search teams…', cards));
+  cards.forEach(c => wrap.appendChild(c.node));
   return wrap;
 }
 
@@ -1754,7 +1793,8 @@ function pitchLog(g) {
       el('div', { class: 'log-main' }, [
         el('div', { text: `${pt.pitchType} — ${RESULT_LABEL[pt.result]}` }),
         el('div', { class: 'log-sub', text: `Inn ${pt.inning} · ${pt.balls}-${pt.strikes} · ${pt.batterName || 'Batter #' + pt.batterNo}` })
-      ])
+      ]),
+      el('button', { class: 'log-del', title: 'Delete this pitch', onclick: () => deletePitch(g, pt.id) }, '×')
     ]));
   });
   box.appendChild(list);
@@ -1765,6 +1805,18 @@ function undoLast(g) {
   if (!g.pitches.length) return;
   g.pitches.pop();
   // Recompute game state from scratch for correctness.
+  recomputeGame(g);
+  save();
+  render();
+}
+
+// Delete a single pitch anywhere in the log (not just the last) and replay the
+// game so the count, outs, inning, and score stay correct.
+function deletePitch(g, id) {
+  const pt = g.pitches.find(p => p.id === id);
+  if (!pt) return;
+  if (!confirm(`Delete this pitch (${pt.pitchType} — ${RESULT_LABEL[pt.result]})?`)) return;
+  g.pitches = g.pitches.filter(p => p.id !== id);
   recomputeGame(g);
   save();
   render();
@@ -2281,14 +2333,6 @@ function renderStats() {
   const wrap = el('div');
   wrap.appendChild(el('div', { class: 'section-head' }, [el('h2', { text: 'Stats' })]));
 
-  if (!state.pitchers.length) {
-    wrap.appendChild(el('div', { class: 'empty' }, [
-      el('p', { text: 'No pitchers yet.' }),
-      el('button', { class: 'btn btn-primary', onclick: () => setTab('pitchers') }, 'Add a Pitcher')
-    ]));
-    return wrap;
-  }
-
   if (!state.ui.statsMode) state.ui.statsMode = 'season';
   wrap.appendChild(el('div', { class: 'segmented', style: { marginBottom: '14px' } },
     [['season', 'Season'], ['scouting', 'Scouting']].map(([k, lbl]) =>
@@ -2303,6 +2347,28 @@ function renderStats() {
 
 // Team-wide, season-long pitching stats for all of my pitchers.
 function renderSeasonStats() {
+  const wrap = el('div');
+  const batters = state.hitters.filter(h => hitterAtBats(h.id).length);
+
+  // Nothing logged at all — a friendly prompt instead of empty tables.
+  if (!state.pitchers.length && !batters.length) {
+    wrap.appendChild(el('div', { class: 'empty' }, [
+      el('p', { text: '📊' }),
+      el('p', { text: 'No stats yet.' }),
+      el('p', { class: 'muted', text: 'Add pitchers or log at-bats, and stats will show up here.' }),
+      el('button', { class: 'btn btn-primary', onclick: () => setTab('pitchers') }, 'Go to Roster')
+    ]));
+    return wrap;
+  }
+
+  if (state.pitchers.length) wrap.appendChild(renderSeasonPitching());
+
+  if (batters.length) wrap.appendChild(renderSeasonHitting(batters));
+  return wrap;
+}
+
+// Season pitching table for all of my pitchers.
+function renderSeasonPitching() {
   const wrap = el('div');
   const cols = ['Pitcher', 'G', 'IP', 'K', 'BB', 'H', 'R', 'AVG', 'K%', 'Whiff%'];
   const head = el('tr', {}, cols.map((c, i) => el('th', { class: i === 0 ? 'col-name' : '', text: c })));
@@ -2344,30 +2410,39 @@ function renderSeasonStats() {
   wrap.appendChild(el('div', { class: 'season-wrap' }, [el('table', { class: 'season-table' }, [el('thead', {}, [head]), body])]));
   wrap.appendChild(el('p', { class: 'muted', style: { margin: '8px 0 4px', fontSize: '12px' },
     text: 'Tap a pitcher for their full card. R = runs allowed.' }));
+  return wrap;
+}
 
-  // Hitting table (my hitters with at-bats).
-  const batters = state.hitters.filter(h => hitterAtBats(h.id).length);
-  if (batters.length) {
-    const hCols = ['Hitter', 'AVG', 'OBP', 'SLG', 'OPS', 'AB', 'H', 'HR', 'RBI', 'BB', 'K'];
-    const hHead = el('tr', {}, hCols.map((c, i) => el('th', { class: i === 0 ? 'col-name' : '', text: c })));
-    const hBody = el('tbody');
-    batters.forEach(h => {
-      const l = hittingLine(hitterAtBats(h.id));
-      hBody.appendChild(el('tr', { class: 'season-row', onclick: () => { state.ui.openHitterId = h.id; save(); setTab('pitchers'); } }, [
-        el('td', { class: 'col-name', text: h.name }),
-        el('td', { text: l.avg }), el('td', { text: l.obp }), el('td', { text: l.slg }), el('td', { text: l.ops }),
-        el('td', { text: String(l.ab) }), el('td', { text: String(l.h) }), el('td', { text: String(l.hr) }),
-        el('td', { text: String(l.rbi) }), el('td', { text: String(l.bb) }), el('td', { text: String(l.k) })
-      ]));
-    });
-    wrap.appendChild(el('div', { class: 'sched-group-label', style: { marginTop: '18px' }, text: 'Hitting' }));
-    wrap.appendChild(el('div', { class: 'season-wrap' }, [el('table', { class: 'season-table' }, [el('thead', {}, [hHead]), hBody])]));
-  }
+// Season hitting table for my hitters who have logged at-bats.
+function renderSeasonHitting(batters) {
+  const wrap = el('div');
+  const hCols = ['Hitter', 'AVG', 'OBP', 'SLG', 'OPS', 'AB', 'H', 'HR', 'RBI', 'BB', 'K'];
+  const hHead = el('tr', {}, hCols.map((c, i) => el('th', { class: i === 0 ? 'col-name' : '', text: c })));
+  const hBody = el('tbody');
+  batters.forEach(h => {
+    const l = hittingLine(hitterAtBats(h.id));
+    hBody.appendChild(el('tr', { class: 'season-row', onclick: () => { state.ui.openHitterId = h.id; save(); setTab('pitchers'); } }, [
+      el('td', { class: 'col-name', text: h.name }),
+      el('td', { text: l.avg }), el('td', { text: l.obp }), el('td', { text: l.slg }), el('td', { text: l.ops }),
+      el('td', { text: String(l.ab) }), el('td', { text: String(l.h) }), el('td', { text: String(l.hr) }),
+      el('td', { text: String(l.rbi) }), el('td', { text: String(l.bb) }), el('td', { text: String(l.k) })
+    ]));
+  });
+  wrap.appendChild(el('div', { class: 'sched-group-label', style: { marginTop: '18px' }, text: 'Hitting' }));
+  wrap.appendChild(el('div', { class: 'season-wrap' }, [el('table', { class: 'season-table' }, [el('thead', {}, [hHead]), hBody])]));
   return wrap;
 }
 
 function renderScoutingStats() {
   const wrap = el('div');
+  if (!state.pitchers.length) {
+    wrap.appendChild(el('div', { class: 'empty' }, [
+      el('p', { text: 'No pitchers yet.' }),
+      el('p', { class: 'muted', text: 'Add a pitcher and log some pitches to see zone tendencies.' }),
+      el('button', { class: 'btn btn-primary', onclick: () => setTab('pitchers') }, 'Go to Roster')
+    ]));
+    return wrap;
+  }
   if (!state.games.length) {
     wrap.appendChild(el('div', { class: 'empty' }, [
       el('p', { text: 'No games logged yet.' }),
@@ -2752,7 +2827,9 @@ function openBackupMenu() {
     el('div', { class: 'field', style: { marginTop: '14px' } }, [
       el('label', { text: 'Restore from a backup file' }), fileInput
     ]),
-    el('p', { class: 'muted', style: { fontSize: '12px' }, text: 'Restoring replaces everything currently in the app.' }),
+    el('p', { class: 'muted', style: { fontSize: '12px' }, text: shared
+      ? 'Restoring replaces the whole team’s shared data, not just this phone.'
+      : 'Restoring replaces everything currently in the app.' }),
     el('button', { class: 'btn btn-block', style: { marginTop: '8px' }, onclick: closeModal }, 'Close')
   ]));
 }
@@ -2782,7 +2859,11 @@ function importBackup(file) {
     catch (e) { toast('Not a valid backup file'); return; }
     if (!data || (!data.pitchers && !data.games)) { toast('Unrecognized backup'); return; }
     const counts = `${(data.pitchers || []).length} pitchers, ${(data.games || []).length} games, ${(data.hitters || []).length} hitters`;
-    if (!confirm(`Restore this backup (${counts})? This replaces all current data.`)) return;
+    const shared = !!(window.__syncReady && window.__syncReady());
+    const warning = shared
+      ? `⚠ Team sharing is ON.\n\nRestoring this backup (${counts}) replaces the data for the ENTIRE coaching staff — not just this phone — and can't be undone.\n\nContinue?`
+      : `Restore this backup (${counts})? This replaces all current data on this device.`;
+    if (!confirm(warning)) return;
     state.pitchers = data.pitchers || [];
     state.hitters = data.hitters || [];
     state.opponents = data.opponents || [];

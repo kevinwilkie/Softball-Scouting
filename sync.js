@@ -19,10 +19,15 @@
   }
 
   const SLICES = ['pitchers', 'hitters', 'opponents', 'schedule', 'atbats', 'hitterPitches', 'games'];
+  // Games are synced per-game (see attachGames/pushGames) so two coaches logging
+  // different games at once never overwrite each other; the rest sync whole-slice.
+  const NONGAME_SLICES = SLICES.filter(k => k !== 'games');
   const SDK = 'https://www.gstatic.com/firebasejs/10.12.5/';
   const lastSynced = {};   // key -> JSON we last read/wrote (dedupes echoes)
   const seeded = {};       // key -> have we handled first snapshot
   const timers = {};       // key -> debounce timer
+  const lastGames = {};    // gameId -> JSON of the game as last read/written
+  let gamesSeeded = false;
   let unsubs = [];
   let db, auth, ready = false, gate;
 
@@ -62,7 +67,7 @@
 
   function attach(user) {
     teardown();
-    SLICES.forEach(key => {
+    NONGAME_SLICES.forEach(key => {
       const ref = db.collection('shared').doc(key);
       unsubs.push(ref.onSnapshot(snap => {
         const d = (snap.exists && snap.data()) || {};
@@ -84,7 +89,79 @@
         if (!modalOpen()) render();
       }, err => console.warn('[sync] snapshot', key, err && err.message)));
     });
+    attachGames(user);
     ready = true;
+  }
+
+  // Games sync per-game: each game is its own field ("g_<id>") in the shared
+  // `games` doc, written with a merge so different games never collide. On
+  // snapshot we merge changed games in and drop games deleted remotely, while
+  // keeping any local game that hasn't been pushed yet.
+  function attachGames(user) {
+    gamesSeeded = false;
+    Object.keys(lastGames).forEach(id => delete lastGames[id]);
+    const ref = db.collection('shared').doc('games');
+    unsubs.push(ref.onSnapshot(snap => {
+      const d = (snap.exists && snap.data()) || {};
+      const incoming = {};
+      Object.keys(d).forEach(k => {
+        if (k.indexOf('g_') === 0 && d[k] && typeof d[k] === 'object' && d[k].id) incoming[d[k].id] = d[k];
+      });
+      const incomingIds = Object.keys(incoming);
+      const firstSnap = !gamesSeeded;
+      gamesSeeded = true;
+      // Empty shared games but this device has some → seed shared from local.
+      if (incomingIds.length === 0 && (state.games || []).length > 0) {
+        if (firstSnap) pushGames(state.games, user);
+        return;
+      }
+      let changed = false;
+      // Apply remote adds/updates.
+      incomingIds.forEach(id => {
+        const js = JSON.stringify(incoming[id]);
+        if (lastGames[id] === js) return; // our own write echoing back
+        lastGames[id] = js;
+        const idx = (state.games || []).findIndex(g => g.id === id);
+        if (idx >= 0) state.games[idx] = incoming[id]; else (state.games = state.games || []).push(incoming[id]);
+        changed = true;
+      });
+      // Apply remote deletions: games we'd previously seen that are now gone.
+      Object.keys(lastGames).forEach(id => {
+        if (incoming[id]) return;
+        delete lastGames[id];
+        const idx = (state.games || []).findIndex(g => g.id === id);
+        if (idx >= 0) { state.games.splice(idx, 1); changed = true; }
+      });
+      if (changed) {
+        if (state.activeGameId && !(state.games || []).some(g => g.id === state.activeGameId)) state.activeGameId = null;
+        persistLocal();
+        if (!modalOpen()) render();
+      }
+    }, err => console.warn('[sync] snapshot games', err && err.message)));
+  }
+
+  // Push only the games that changed (and field-delete removed ones).
+  function pushGames(games, user) {
+    const updates = {};
+    const seen = {};
+    (games || []).forEach(g => {
+      if (!g || !g.id) return;
+      seen[g.id] = true;
+      const js = JSON.stringify(g);
+      if (lastGames[g.id] === js) return; // unchanged
+      lastGames[g.id] = js;
+      updates['g_' + g.id] = g;
+    });
+    Object.keys(lastGames).forEach(id => {
+      if (seen[id]) return;
+      delete lastGames[id];
+      updates['g_' + id] = firebase.firestore.FieldValue.delete();
+    });
+    if (!Object.keys(updates).length) return;
+    updates.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    updates.by = (user && user.email) || null;
+    db.collection('shared').doc('games').set(updates, { merge: true })
+      .catch(e => console.warn('[sync] write games', e && e.message));
   }
 
   function teardown() {
@@ -95,7 +172,7 @@
   // Called from app.js save(): push any locally-changed slices up (debounced).
   window.__syncPush = function () {
     if (!ready) return;
-    SLICES.forEach(key => {
+    NONGAME_SLICES.forEach(key => {
       const json = JSON.stringify(state[key] || []);
       if (json === lastSynced[key]) return;
       lastSynced[key] = json;
@@ -103,6 +180,10 @@
       clearTimeout(timers[key]);
       timers[key] = setTimeout(() => writeSlice(key, snapshot, auth.currentUser), 500);
     });
+    // Games push per-game (debounced), snapshotting the current array.
+    const gamesSnapshot = JSON.parse(JSON.stringify(state.games || []));
+    clearTimeout(timers.games);
+    timers.games = setTimeout(() => pushGames(gamesSnapshot, auth.currentUser), 500);
   };
 
   // True when the shared team database is connected and writable (signed in).
