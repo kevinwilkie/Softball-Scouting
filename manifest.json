@@ -1,7 +1,7 @@
 {
-  "name": "Carrollton Softball Pitcher Scout",
-  "short_name": "CHS Scout",
-  "description": "Scout opposing softball pitchers: roster, pitch types, and live game pitch logging.",
+  "name": "Carrollton Trojans Pitch Scout",
+  "short_name": "Trojans Scout",
+  "description": "Carrollton Trojans softball: pitcher scouting, game charting, live stats.",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait",

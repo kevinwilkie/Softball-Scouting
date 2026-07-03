@@ -1,4 +1,4 @@
-# Carrollton Softball — Pitcher Scout
+# Carrollton Trojans — Pitch Scout
 
 A lightweight, mobile-first web app for scouting opposing softball pitchers for
 Carrollton High School's softball team. Built as a no-backend Progressive Web

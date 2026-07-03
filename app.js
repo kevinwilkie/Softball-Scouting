@@ -1466,7 +1466,7 @@ function openPitchEntry(g, zoneId, zoneKind) {
     const ptGrid = el('div', { class: 'opt-grid cols-3' }, pitchOptions.map(pt =>
       el('div', {
         class: 'opt' + (draft.pitchType === pt ? ' tone-strike' : ''),
-        style: draft.pitchType === pt ? { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' } : {},
+        style: draft.pitchType === pt ? { background: 'var(--accent)', color: 'var(--accent-ink)', borderColor: 'var(--accent)' } : {},
         onclick: () => { draft.pitchType = pt; openModal(buildBody()); }
       }, pt)));
 
@@ -2008,7 +2008,7 @@ function openScoutPitchEntry(h, zoneId, zoneKind, count) {
     const ptGrid = el('div', { class: 'opt-grid' }, SCOUT_PITCH_TYPES.map(pt =>
       el('div', {
         class: 'opt',
-        style: draft.pitchType === pt ? { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' } : {},
+        style: draft.pitchType === pt ? { background: 'var(--accent)', color: 'var(--accent-ink)', borderColor: 'var(--accent)' } : {},
         onclick: () => { draft.pitchType = pt; openModal(body()); }
       }, pt)));
     const mkRes = group => el('div', { class: 'opt-grid' }, RESULTS.filter(r => r.group === group).map(r =>
