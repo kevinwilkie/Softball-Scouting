@@ -349,7 +349,8 @@ function render() {
     game: renderGame,
     chart: renderChart,
     abscout: renderHitterScout,
-    stats: renderStats
+    stats: renderStats,
+    guide: renderGuide
   };
   root.appendChild((views[state.ui.tab] || renderRoster)());
   window.scrollTo(0, 0);
@@ -2988,6 +2989,147 @@ function closeModal() {
   host.innerHTML = '';
 }
 
+/* ============================ USER GUIDE ============================= */
+
+function openGuide() {
+  state.ui.guideReturn = (state.ui.tab && state.ui.tab !== 'guide') ? state.ui.tab : 'pitchers';
+  state.ui.tab = 'guide';
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  save();
+  render();
+}
+
+// Accordion section — tap the header to expand/collapse.
+function guideSection(key, emoji, title, buildBody) {
+  if (!state.ui.guideOpen) state.ui.guideOpen = {};
+  const open = !!state.ui.guideOpen[key];
+  const header = el('div', { class: 'guide-head', onclick: () => { state.ui.guideOpen[key] = !open; save(); render(); } }, [
+    el('span', { class: 'guide-emoji', text: emoji }),
+    el('span', { class: 'guide-title', text: title }),
+    el('span', { class: 'guide-caret', text: open ? '–' : '+' })
+  ]);
+  const body = el('div', { class: 'guide-body' });
+  if (open) buildBody(body);
+  return el('div', { class: 'guide-acc' + (open ? ' open' : '') }, [header, body]);
+}
+
+function gp(text) { return el('p', { class: 'guide-p', text: text }); }
+function glist(items) { return el('ul', { class: 'guide-list' }, items.map(t => el('li', {}, t))); }
+function gsteps(items) { return el('ol', { class: 'guide-steps' }, items.map(t => el('li', {}, t))); }
+function gExample(text) { return el('div', { class: 'guide-callout example' }, [el('strong', { text: 'Example — ' }), text]); }
+function gHelps(text) { return el('div', { class: 'guide-callout helps' }, [el('strong', { text: 'Why it helps — ' }), text]); }
+
+function renderGuide() {
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'section-head' }, [
+    el('button', { class: 'btn btn-sm', onclick: () => setTab(state.ui.guideReturn || 'pitchers') }, '‹ Back'),
+    el('h2', { text: 'How to use this app' })
+  ]));
+  wrap.appendChild(el('p', { class: 'muted', style: { margin: '0 0 14px' }, text: 'Tap any section to open it. The app works right on your phone at the field — even with no signal.' }));
+
+  wrap.appendChild(guideSection('welcome', '👋', 'Welcome & installing', body => {
+    body.appendChild(gp('Trojans Pitch Scout keeps your whole program in one place: your roster, opponents, live game logging, pitch charts, and season stats. It runs in your browser and works offline.'));
+    body.appendChild(gp('Put it on your home screen so it opens like a real app:'));
+    body.appendChild(glist([
+      'iPhone (Safari): tap the Share icon, then “Add to Home Screen.”',
+      'Android (Chrome): tap the ⋮ menu, then “Add to Home screen.”'
+    ]));
+    body.appendChild(gHelps('From the home-screen icon it opens full-screen and loads instantly, even in a dugout with bad signal.'));
+  }));
+
+  wrap.appendChild(guideSection('signin', '🔑', 'Signing in & sharing with your staff', body => {
+    body.appendChild(gp('When team sharing is on, every coach signs in with their school Google account and sees the same data live — add a player or log a pitch on one phone and it shows up on everyone’s.'));
+    body.appendChild(gsteps([
+      'Open the app in Safari or Chrome (not from inside a text or email).',
+      'Tap “Sign in with Google” and choose your school account.',
+      'You’re in — start using any tab. Your changes sync to the whole staff.'
+    ]));
+    body.appendChild(gp('If sign-in ever fails from a link in Messages or email, tap the ⋮ / share icon and choose “Open in Safari,” then try again.'));
+    body.appendChild(gHelps('The whole staff scouts off one shared book — no more comparing notes from three different phones after the game.'));
+  }));
+
+  wrap.appendChild(guideSection('roster', '👥', 'Roster tab — your players', body => {
+    body.appendChild(gp('The Roster tab has two sections: Hitters (everyone who bats) and Pitchers. Tap “+ Add” in either to add a player, or tap a player to open their card. Use the search box to find someone fast on a long list.'));
+    body.appendChild(gp('A two-way player (like Khloe Norton) shows up in both sections — that’s on purpose, so she can be in the batting order AND have a pitching card.'));
+    body.appendChild(gExample('Tap Khloe Norton under Pitchers to open her card, then Edit to add her pitch types (Fastball, Changeup, etc.).'));
+    body.appendChild(gHelps('Every lineup, stat, and heat map is tied to these players, so a good roster makes everything else automatic.'));
+  }));
+
+  wrap.appendChild(guideSection('teams', '⚔️', 'Teams tab — opponents', body => {
+    body.appendChild(gp('Add the teams you play and, if you want, their players. Use “Add many” to paste a whole roster at once (one name per line).'));
+    body.appendChild(gExample('Add Villa Rica, open it, tap “Add many,” and paste their batting order. Now you can set their lineup during the game.'));
+    body.appendChild(gHelps('With an opponent’s lineup entered, the app tracks exactly which batter is up as you log, so your pitch data is tied to the right hitter.'));
+  }));
+
+  wrap.appendChild(guideSection('schedule', '📅', 'Schedule tab', body => {
+    body.appendChild(gp('Keep your game schedule here. Add games one at a time, or import a list. Each game can link to the game you log so the score shows next to it.'));
+    body.appendChild(gExample('On game day, open the Schedule, find Friday vs Villa Rica, and tap “Log game” — it starts a new game already filled in with the opponent and date.'));
+    body.appendChild(gHelps('One tap from the schedule to a live game means less setup when first pitch is coming and you’re scrambling.'));
+  }));
+
+  wrap.appendChild(guideSection('log', '🎯', 'Log tab — scouting a live game', body => {
+    body.appendChild(gp('This is the heart of the app. Start a game by picking the pitcher, the opponent, and the date.'));
+    body.appendChild(gp('The scoreboard at the top tracks the count (balls/strikes), outs, inning, score, and who’s on base. Open “Lineups” to set both batting orders — move the order with the ▲▼ arrows, swap a player with ⇄ (substitutions), or remove with ×.'));
+    body.appendChild(gp('To log a pitch: tap the spot on the strike zone where it was located, then choose the pitch type and the result (ball, strike, foul, in play, hit, out…). The count, outs, innings, and baserunners all update automatically. On an extra-base hit with runners on, it asks how many scored.'));
+    body.appendChild(gp('Made a mistake? Tap “Undo last,” or tap the × on any single pitch in the log to remove just that one. When the game’s over, tap “End Game” — the results save to that pitcher’s card.'));
+    body.appendChild(gExample('Khloe throws a fastball low-and-away for a called strike: tap that outside-low zone → Fastball → Called Strike. The count jumps to 0-1 by itself.'));
+    body.appendChild(gHelps('Every pitch you tap builds that pitcher’s heat maps, tendencies, and season line — so a season of tapping turns into a real scouting report.'));
+  }));
+
+  wrap.appendChild(guideSection('chart', '📋', 'Chart tab — the pitching chart', body => {
+    body.appendChild(gp('A digital version of the paper Game Day Pitching Chart your pitching coach uses. It shows each at-bat as a sequence of pitch call, location, and result, with room for notes.'));
+    body.appendChild(gp('When the lineup comes back around, it shows how you pitched that batter in their earlier at-bats today.'));
+    body.appendChild(gHelps('You can see at a glance how you’ve been attacking a hitter, so you don’t give them the same pitch to hit a third time.'));
+  }));
+
+  wrap.appendChild(guideSection('atbat', '🥎', 'At Bat tab — scouting THEIR pitcher', body => {
+    body.appendChild(gp('Use this while your team is hitting, to chart how the opposing pitcher works your hitters. Pick the hitter at the plate, set the opponent, the pitcher’s name, and whether they throw right or left.'));
+    body.appendChild(gp('Then tap where each pitch was located and mark it Hard or Soft, plus the result.'));
+    body.appendChild(gExample('Ari Harley is up against Bremen’s ace. Tap the zone, choose Hard or Soft, and log the result for each pitch she sees.'));
+    body.appendChild(gHelps('All of this feeds the “Opp Pitchers” report (in Stats), which combines every hitter’s at-bats into one picture of how that pitcher attacks.'));
+  }));
+
+  wrap.appendChild(guideSection('stats', '📊', 'Stats tab — three views', body => {
+    body.appendChild(gp('The Stats tab has three modes across the top:'));
+    body.appendChild(el('div', { class: 'guide-sub', text: 'Season' }));
+    body.appendChild(gp('Your team’s pitching (ERA, WHIP, IP, K, first-pitch-strike %…) and hitting (AVG/OBP/SLG/OPS) in tables. Use the season dropdown to look at one year. Tap any player to open their card. Hitter cards include Splits — how they do vs righties, vs lefties, and with runners in scoring position.'));
+    body.appendChild(el('div', { class: 'guide-sub', text: 'My Pitchers' }));
+    body.appendChild(gp('Heat maps for your own pitchers: where they throw, where they get whiffs, and where they get hit. Plus their go-to pitch by count and their tendencies. Filter by batter hand or a specific hitter.'));
+    body.appendChild(el('div', { class: 'guide-sub', text: 'Opp Pitchers' }));
+    body.appendChild(gp('A combined report on an opposing pitcher, built from everything logged in the At Bat tab across all your hitters: a location heat map, their Hard/Soft mix, and what they throw in each count.'));
+    body.appendChild(gExample('Before a rematch, open Opp Pitchers → Bremen Ace and you’ll see she lives soft-away and only comes hard when she’s ahead.'));
+    body.appendChild(gHelps('This turns a season of tapping into a game plan you can actually hand your hitters and pitchers.'));
+  }));
+
+  wrap.appendChild(guideSection('print', '🖨️', 'Player cards & printing', body => {
+    body.appendChild(gp('Tap any pitcher for their card: ERA, WHIP, strike %, and a game-by-game log. Tap any hitter for their season line, splits, and at-bat log.'));
+    body.appendChild(gp('On a pitcher card or an Opp Pitchers report, tap the 🖨 button to print a clean, ink-friendly scouting sheet.'));
+    body.appendChild(gHelps('Hand a printed sheet to your players before the game — the heat maps and tendencies print in color.'));
+  }));
+
+  wrap.appendChild(guideSection('backup', '💾', 'Backup & roster tools (⚙️ menu)', body => {
+    body.appendChild(gp('Tap the gear icon (top-right) for extra tools:'));
+    body.appendChild(glist([
+      'Publish roster to team — push your Hitters and Pitchers to everyone (when sharing is on).',
+      'Reload Carrollton roster — re-adds any of the 22 team players that are missing (never duplicates).',
+      'Export / Restore backup — save all your data to a file, or load it back.'
+    ]));
+    body.appendChild(gp('Heads up: when team sharing is on, restoring a backup replaces the whole team’s data, not just your phone.'));
+    body.appendChild(gHelps('Export a backup now and then so a season of games is never one lost phone away.'));
+  }));
+
+  wrap.appendChild(guideSection('tips', '💡', 'Good to know', body => {
+    body.appendChild(glist([
+      'It works offline — log the whole game with no signal; it syncs when you’re back online.',
+      'It updates itself when you’re online. If something looks old, reload once.',
+      'Deletes (games, pitches, at-bats, players) are permanent, so the app asks first.',
+      'Log from the home-screen icon for the smoothest experience.'
+    ]));
+  }));
+
+  return wrap;
+}
+
 /* ----------------------- Backup / restore ------------------------------ */
 
 function openBackupMenu() {
@@ -3000,6 +3142,7 @@ function openBackupMenu() {
 
   openModal(el('div', {}, [
     el('h3', { text: 'Team & Backup' }),
+    el('button', { class: 'btn btn-block', style: { marginBottom: '14px' }, onclick: () => { closeModal(); openGuide(); } }, '📖 How to use this app'),
     el('p', { class: 'sheet-sub', text: shared
       ? 'Team sharing is on. Changes sync live to every signed-in coach.'
       : 'Data currently lives on this device. Export a backup to keep it safe or move it to another phone.' }),
@@ -3108,4 +3251,7 @@ if ('serviceWorker' in navigator) {
 const menuBtn = document.getElementById('menu-btn');
 if (menuBtn) menuBtn.addEventListener('click', openBackupMenu);
 
-setTab(state.ui.tab || 'pitchers');
+const helpBtn = document.getElementById('help-btn');
+if (helpBtn) helpBtn.addEventListener('click', openGuide);
+
+setTab(state.ui.tab === 'guide' ? 'pitchers' : (state.ui.tab || 'pitchers'));
