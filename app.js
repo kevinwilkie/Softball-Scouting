@@ -2700,14 +2700,31 @@ function openBackupMenu() {
     if (f) importBackup(f);
   } });
 
+  const shared = !!(window.__syncReady && window.__syncReady());
+
   openModal(el('div', {}, [
-    el('h3', { text: 'Backup & Restore' }),
-    el('p', { class: 'sheet-sub', text: 'Your data lives only on this device. Export a backup to keep it safe or move it to another phone.' }),
+    el('h3', { text: 'Team & Backup' }),
+    el('p', { class: 'sheet-sub', text: shared
+      ? 'Team sharing is on. Changes sync live to every signed-in coach.'
+      : 'Data currently lives on this device. Export a backup to keep it safe or move it to another phone.' }),
     el('div', { class: 'stat-row' }, [el('span', { text: 'Pitchers' }), el('span', { class: 'v', text: String(state.pitchers.length) })]),
     el('div', { class: 'stat-row' }, [el('span', { text: 'Hitters' }), el('span', { class: 'v', text: String(state.hitters.length) })]),
     el('div', { class: 'stat-row' }, [el('span', { text: 'Opponents' }), el('span', { class: 'v', text: String(state.opponents.length) })]),
     el('div', { class: 'stat-row' }, [el('span', { text: 'Games' }), el('span', { class: 'v', text: String(state.games.length) })]),
     el('div', { class: 'stat-row' }, [el('span', { text: 'At-bats' }), el('span', { class: 'v', text: String((state.atbats || []).length) })]),
+    el('button', { class: 'btn btn-primary btn-block', style: { marginTop: '16px' }, onclick: () => {
+      if (!(window.__syncReady && window.__syncReady())) {
+        toast('Turn on team sharing first (sign in)');
+        return;
+      }
+      if (!confirm(`Publish this roster (${state.hitters.length} hitters, ${state.pitchers.length} pitchers) to the whole team? Every signed-in coach will see these players.`)) return;
+      window.__syncPublishRoster();
+      closeModal();
+      toast('Roster published to the team');
+    } }, '👥 Publish roster to team'),
+    el('p', { class: 'muted', style: { fontSize: '12px', marginTop: '6px' }, text: shared
+      ? 'Sends this device’s Hitters and Pitchers to the shared team database.'
+      : 'Sign in with team sharing first, then this pushes the roster to everyone.' }),
     el('button', { class: 'btn btn-primary btn-block', style: { marginTop: '16px' }, onclick: exportBackup }, '⬇ Export backup (.json)'),
     el('div', { class: 'field', style: { marginTop: '14px' } }, [
       el('label', { text: 'Restore from a backup file' }), fileInput

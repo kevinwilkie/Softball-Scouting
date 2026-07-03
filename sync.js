@@ -106,6 +106,22 @@
     });
   };
 
+  // True when the shared team database is connected and writable (signed in).
+  window.__syncReady = function () { return !!(ready && auth && auth.currentUser); };
+
+  // Force-push the roster (hitters + pitchers) to the shared team DB so every
+  // signed-in coach sees these players. Overwrites the shared copy of those
+  // two slices. Returns false if team sharing isn't active.
+  window.__syncPublishRoster = function () {
+    if (!window.__syncReady()) return false;
+    ['hitters', 'pitchers'].forEach(key => {
+      const arr = state[key] || [];
+      lastSynced[key] = JSON.stringify(arr);
+      writeSlice(key, arr, auth.currentUser);
+    });
+    return true;
+  };
+
   function writeSlice(key, data, user) {
     db.collection('shared').doc(key).set({
       data: data,
