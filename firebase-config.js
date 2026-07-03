@@ -28,5 +28,9 @@ window.FIREBASE_CONFIG = {
 // Coaches allowed to sign in (must also be listed in firestore.rules).
 window.ALLOWED_EMAILS = [
   "kevin.wilkie@campusoutreach.org",
-  // add the rest of your staff emails here
+  "makenzie.spayde@carrolltoncityschools.net",
+  "cali.barron@carrolltoncityschools.net",
+  "jaime.monroe@carrolltoncityschools.net",
+  "gavin.porter@carrolltoncityschools.net",
+  "zach.odom@carrolltoncityschools.net"
 ];
