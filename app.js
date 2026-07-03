@@ -3248,10 +3248,58 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-const menuBtn = document.getElementById('menu-btn');
-if (menuBtn) menuBtn.addEventListener('click', openBackupMenu);
+/* ---------------------- Slide-out nav drawer --------------------------- */
 
-const helpBtn = document.getElementById('help-btn');
-if (helpBtn) helpBtn.addEventListener('click', openGuide);
+// Every destination lives in the left drawer; the bottom bar shows a subset.
+const NAV_ITEMS = [
+  { tab: 'pitchers',  icon: '👥', label: 'Roster' },
+  { tab: 'opponents', icon: '⚔️', label: 'Teams' },
+  { tab: 'schedule',  icon: '📅', label: 'Schedule' },
+  { tab: 'game',      icon: '🎯', label: 'Log Game' },
+  { tab: 'chart',     icon: '📋', label: 'Chart' },
+  { tab: 'abscout',   icon: '🥎', label: 'At Bat' },
+  { tab: 'stats',     icon: '📊', label: 'Stats' }
+];
+
+function drawerItem(icon, label, active, onClick) {
+  return el('div', { class: 'drawer-item' + (active ? ' active' : ''), onclick: onClick }, [
+    el('span', { class: 'di-icon', text: icon }),
+    el('span', { text: label })
+  ]);
+}
+
+function openDrawer() {
+  const d = document.getElementById('drawer');
+  if (!d) return;
+  const panel = d.querySelector('.drawer-panel');
+  panel.innerHTML = '';
+  panel.appendChild(el('div', { class: 'drawer-head' }, [
+    el('img', { src: 'icon.svg?v=21', alt: '' }),
+    el('div', {}, [
+      el('h2', { text: 'Trojans Pitch Scout' }),
+      el('p', { text: 'Carrollton High School Softball' })
+    ])
+  ]));
+  NAV_ITEMS.forEach(it => panel.appendChild(
+    drawerItem(it.icon, it.label, state.ui.tab === it.tab, () => { closeDrawer(); setTab(it.tab); })));
+  panel.appendChild(el('div', { class: 'drawer-sep' }));
+  panel.appendChild(drawerItem('📖', 'How to use this app', state.ui.tab === 'guide', () => { closeDrawer(); openGuide(); }));
+  panel.appendChild(drawerItem('⚙️', 'Team & Backup', false, () => { closeDrawer(); openBackupMenu(); }));
+
+  d.classList.remove('hidden');
+  requestAnimationFrame(() => d.classList.add('open'));
+}
+
+function closeDrawer() {
+  const d = document.getElementById('drawer');
+  if (!d) return;
+  d.classList.remove('open');
+  setTimeout(() => d.classList.add('hidden'), 250);
+}
+
+const navBtn = document.getElementById('nav-btn');
+if (navBtn) navBtn.addEventListener('click', openDrawer);
+const drawerEl = document.getElementById('drawer');
+if (drawerEl) drawerEl.querySelector('.drawer-backdrop').addEventListener('click', closeDrawer);
 
 setTab(state.ui.tab === 'guide' ? 'pitchers' : (state.ui.tab || 'pitchers'));

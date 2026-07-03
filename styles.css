@@ -805,3 +805,57 @@ button { font-family: inherit; }
 .guide-callout strong { color: var(--text); }
 .guide-callout.example { background: rgba(47,111,219,0.12); border-left: 3px solid var(--blue); }
 .guide-callout.helps { background: rgba(208,152,27,0.13); border-left: 3px solid var(--accent); }
+
+/* ---------- Slide-out nav drawer + hamburger ---------- */
+.nav-btn {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  font-size: 18px; line-height: 1;
+  cursor: pointer; flex-shrink: 0;
+}
+.nav-btn:active { transform: scale(0.94); }
+
+.drawer { position: fixed; inset: 0; z-index: 50; }
+.drawer.hidden { display: none; }
+.drawer-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.55);
+  opacity: 0; transition: opacity 0.25s ease;
+}
+.drawer.open .drawer-backdrop { opacity: 1; }
+.drawer-panel {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: 82%; max-width: 320px;
+  background: var(--bg-elev);
+  border-right: 1px solid var(--border);
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+  display: flex; flex-direction: column;
+  padding: calc(14px + var(--safe-top)) 0 calc(14px + var(--safe-bottom));
+  overflow-y: auto;
+}
+.drawer.open .drawer-panel { transform: translateX(0); }
+.drawer-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 4px 18px 16px; margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.drawer-head img { width: 40px; height: 40px; border-radius: 9px; flex-shrink: 0; }
+.drawer-head h2 { margin: 0; font-size: 16px; font-weight: 700; }
+.drawer-head p { margin: 1px 0 0; font-size: 11px; color: var(--text-dim); }
+.drawer-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 13px 18px; cursor: pointer;
+  font-size: 15px; font-weight: 600; color: var(--text);
+}
+.drawer-item .di-icon { font-size: 18px; width: 22px; text-align: center; flex-shrink: 0; }
+.drawer-item:active { background: var(--bg-elev-2); }
+.drawer-item.active {
+  color: var(--accent);
+  background: rgba(208,152,27,0.09);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.drawer-sep { height: 1px; background: var(--border); margin: 8px 18px; }
