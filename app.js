@@ -10,17 +10,15 @@
 
 const CLASSIFICATIONS = ['8th Grade', 'Freshman', 'Sophomore', 'Junior', 'Senior'];
 
-const PITCH_TYPES = [
-  'Fastball', 'Changeup', 'Curveball', 'Riseball',
-  'Dropball', 'Screwball', 'Drop Curve', 'Knuckle'
-];
+const PITCH_TYPES = ['FB', 'CH', 'R', 'C', 'SC', 'D', 'BDC'];
 
-// Short labels for compact tendency cells.
+// Short labels for compact tendency cells. Legacy full names still map; the
+// new codes are already short, so unknown names return as-is (no truncation).
 const PITCH_ABBR = {
   Fastball: 'FB', Changeup: 'CH', Curveball: 'CB', Riseball: 'RB',
   Dropball: 'DB', Screwball: 'SC', 'Drop Curve': 'DC', Knuckle: 'KN'
 };
-const abbr = name => PITCH_ABBR[name] || (name || '?').slice(0, 2).toUpperCase();
+const abbr = name => PITCH_ABBR[name] || name || '?';
 
 // For charting opposing pitchers you usually only read velocity, not grip.
 const SCOUT_PITCH_TYPES = ['Hard', 'Soft'];
@@ -30,7 +28,7 @@ const CHART_ABBR = {
   Fastball: 'F', Changeup: 'CH', Curveball: 'C', Riseball: 'R',
   Dropball: 'D', Screwball: 'S', 'Drop Curve': 'DC', Knuckle: 'KN', 'Pitch Out': 'PO'
 };
-const chartAbbr = name => CHART_ABBR[name] || (name || '?').slice(0, 2).toUpperCase();
+const chartAbbr = name => CHART_ABBR[name] || name || '?';
 const RESULT_ABBR = {
   ball: 'B', called_strike: 'CK', swing_strike: 'K', foul: 'FL', hbp: 'HBP',
   in_play_out: 'OUT', single: '1B', double: '2B', triple: '3B', hr: 'HR', hit: '1B'
@@ -133,6 +131,29 @@ const RESULTS = [
   { id: 'triple',        label: 'Triple',        tone: 'hit',    group: 'ip' },
   { id: 'hr',            label: 'Home Run',      tone: 'hit',    group: 'ip' },
 ];
+
+// Batted-ball options for the "If put in play" multi-select. A coach taps
+// everything that applies (contact type + result). Only the outcome labels map
+// to a game result id; the rest are descriptive scouting tags.
+const IN_PLAY_OPTIONS = ['Out', 'Hard Ground Ball', 'Line Drive', 'Pop Up', 'Weak Ground Ball', 'Bunt', 'Home Run', 'Single', 'Double', 'Triple'];
+const IN_PLAY_OUTCOME = { 'Out': 'in_play_out', 'Single': 'single', 'Double': 'double', 'Triple': 'triple', 'Home Run': 'hr' };
+
+// Descriptive contact tags for a pitch (the batted-ball type, minus the pure
+// out/hit outcome which is already shown as the result). Returns '' if none.
+function contactDetail(pt) {
+  if (!pt || !pt.contact || !pt.contact.length) return '';
+  return pt.contact.filter(l => !IN_PLAY_OUTCOME[l]).join(', ');
+}
+
+// Derive the single game-result id from a set of selected labels (highest hit
+// wins; anything else is an out).
+function deriveInPlayResult(labels) {
+  if (labels.includes('Home Run')) return 'hr';
+  if (labels.includes('Triple')) return 'triple';
+  if (labels.includes('Double')) return 'double';
+  if (labels.includes('Single')) return 'single';
+  return 'in_play_out';
+}
 
 // Result classification sets (used by count logic and stats). 'hit' is a
 // legacy id from before extra-base detail; it's treated as a generic hit.
@@ -1720,7 +1741,7 @@ function strikeZonePanel(g) {
 function openPitchEntry(g, zoneId, zoneKind) {
   const p = pitcherById(g.pitcherId);
   const pitchOptions = (p && p.pitches && p.pitches.length) ? p.pitches : ['Pitch'];
-  const draft = { zoneId, pitchType: pitchOptions[0] };
+  const draft = { zoneId, pitchType: pitchOptions[0], inPlay: [] };
 
   function renderSheet() {
     const ptGrid = el('div', { class: 'opt-grid cols-3' }, pitchOptions.map(pt =>
@@ -1730,11 +1751,26 @@ function openPitchEntry(g, zoneId, zoneKind) {
         onclick: () => { draft.pitchType = pt; openModal(buildBody()); }
       }, pt)));
 
-    const mkRes = group => el('div', { class: 'opt-grid' }, RESULTS.filter(r => r.group === group).map(r =>
+    // "No contact" outcomes commit on a single tap.
+    const ncGrid = el('div', { class: 'opt-grid' }, RESULTS.filter(r => r.group === 'nc').map(r =>
       el('div', {
         class: `opt tone-${r.tone}`,
         onclick: () => commitPitch(g, draft.zoneId, draft.pitchType, r.id)
       }, r.label)));
+
+    // "If put in play" is a multi-select — tap all that apply, then Save.
+    const ipGrid = el('div', { class: 'opt-grid cols-2' }, IN_PLAY_OPTIONS.map(label => {
+      const on = draft.inPlay.includes(label);
+      const outcome = !!IN_PLAY_OUTCOME[label];
+      return el('div', {
+        class: 'opt' + (on ? ' selected' : '') + (outcome ? ' opt-outcome' : ''),
+        onclick: () => {
+          const i = draft.inPlay.indexOf(label);
+          if (i >= 0) draft.inPlay.splice(i, 1); else draft.inPlay.push(label);
+          openModal(buildBody());
+        }
+      }, label);
+    }));
 
     return el('div', {}, [
       el('div', { class: 'sheet-handle' }),
@@ -1743,23 +1779,36 @@ function openPitchEntry(g, zoneId, zoneKind) {
       el('div', { class: 'sheet-section-label', text: 'Pitch Type' }),
       ptGrid,
       el('div', { class: 'sheet-section-label', text: 'Result' }),
-      mkRes('nc'),
-      el('div', { class: 'sheet-section-label', text: 'If put in play' }),
-      mkRes('ip'),
-      el('button', { class: 'btn btn-block', style: { marginTop: '16px' }, onclick: closeModal }, 'Cancel')
+      ncGrid,
+      el('div', { class: 'sheet-section-label', text: 'If put in play — tap all that apply' }),
+      ipGrid,
+      el('button', {
+        class: 'btn btn-primary btn-block', style: { marginTop: '12px' },
+        onclick: () => {
+          if (!draft.inPlay.length) { toast('Pick a result'); return; }
+          commitPitchInPlay(g, draft.zoneId, draft.pitchType, draft.inPlay.slice());
+        }
+      }, 'Save in-play result'),
+      el('button', { class: 'btn btn-block', style: { marginTop: '8px' }, onclick: closeModal }, 'Cancel')
     ]);
   }
   const buildBody = renderSheet;
   openModal(renderSheet());
 }
 
-function commitPitch(g, zoneId, pitchType, resultId) {
+function commitPitch(g, zoneId, pitchType, resultId, contact) {
   const info = atBatRunsInfo(g, resultId);
   if (info.needsPrompt) {
-    openRunsPicker(g, resultId, info, runs => finalizePitch(g, zoneId, pitchType, resultId, runs));
+    openRunsPicker(g, resultId, info, runs => finalizePitch(g, zoneId, pitchType, resultId, runs, contact));
   } else {
-    finalizePitch(g, zoneId, pitchType, resultId, info.autoRuns);
+    finalizePitch(g, zoneId, pitchType, resultId, info.autoRuns, contact);
   }
+}
+
+// Commit a put-in-play pitch from the multi-select: derive the game result and
+// keep the tapped labels as scouting detail.
+function commitPitchInPlay(g, zoneId, pitchType, labels) {
+  commitPitch(g, zoneId, pitchType, deriveInPlayResult(labels), labels);
 }
 
 // Quick "how many scored?" prompt for ambiguous at-bats (e.g. single with a
@@ -1778,13 +1827,14 @@ function openRunsPicker(g, resultId, info, onPick) {
   ]));
 }
 
-function finalizePitch(g, zoneId, pitchType, resultId, runsChosen) {
+function finalizePitch(g, zoneId, pitchType, resultId, runsChosen, contact) {
   const cb = currentBatter(g);
   const pitch = {
     id: uid(),
     zone: zoneId,
     pitchType,
     result: resultId,
+    contact: (contact && contact.length) ? contact : null,
     inning: g.inning,
     half: g.half,
     balls: g.balls,
@@ -1872,7 +1922,7 @@ function pitchLog(g) {
     list.appendChild(el('div', { class: 'log-row' }, [
       el('div', { class: `log-pill ${RESULT_TONE[pt.result]}`, text: pt.zone }),
       el('div', { class: 'log-main' }, [
-        el('div', { text: `${pt.pitchType} — ${RESULT_LABEL[pt.result]}` }),
+        el('div', { text: `${pt.pitchType} — ${RESULT_LABEL[pt.result]}${contactDetail(pt) ? ' · ' + contactDetail(pt) : ''}` }),
         el('div', { class: 'log-sub', text: `Inn ${pt.inning} · ${pt.balls}-${pt.strikes} · ${pt.batterName || 'Batter #' + pt.batterNo}` })
       ]),
       el('button', { class: 'log-del', title: 'Delete this pitch', onclick: () => deletePitch(g, pt.id) }, '×')
@@ -2197,12 +2247,16 @@ function chartAtBatBox(g, ab) {
     placeholder: 'Notes', autocomplete: 'off',
     oninput: e => { g.abNotes = g.abNotes || {}; g.abNotes[notesKey] = e.target.value; save(); } });
 
+  const lastPt = ab.pitches[ab.pitches.length - 1];
+  const detail = contactDetail(lastPt);
+
   return el('div', { class: 'card chart-ab' }, [
     el('div', { class: 'chart-ab-head' }, [
       el('span', { class: 'chart-ab-who', text: `${who}${hand}` }),
       el('span', { class: 'muted', text: `Inn ${ab.inning} · ${ab.outs} out${ab.outs === 1 ? '' : 's'}` })
     ]),
     chartSeq(ab.pitches),
+    detail ? el('div', { class: 'chart-ab-detail', text: `${RESULT_LABEL[lastPt.result]} · ${detail}` }) : null,
     notesInput
   ]);
 }
@@ -3051,7 +3105,7 @@ function renderGuide() {
   wrap.appendChild(guideSection('roster', '👥', 'Roster tab — your players', body => {
     body.appendChild(gp('The Roster tab has two sections: Hitters (everyone who bats) and Pitchers. Tap “+ Add” in either to add a player, or tap a player to open their card. Use the search box to find someone fast on a long list.'));
     body.appendChild(gp('A two-way player (like Khloe Norton) shows up in both sections — that’s on purpose, so she can be in the batting order AND have a pitching card.'));
-    body.appendChild(gExample('Tap Khloe Norton under Pitchers to open her card, then Edit to add her pitch types (Fastball, Changeup, etc.).'));
+    body.appendChild(gExample('Tap Khloe Norton under Pitchers to open her card, then Edit to add her pitch types (FB, CH, R, C, etc.).'));
     body.appendChild(gHelps('Every lineup, stat, and heat map is tied to these players, so a good roster makes everything else automatic.'));
   }));
 
@@ -3070,9 +3124,9 @@ function renderGuide() {
   wrap.appendChild(guideSection('log', '🎯', 'Log tab — scouting a live game', body => {
     body.appendChild(gp('This is the heart of the app. Start a game by picking the pitcher, the opponent, and the date.'));
     body.appendChild(gp('The scoreboard at the top tracks the count (balls/strikes), outs, inning, score, and who’s on base. Open “Lineups” to set both batting orders — move the order with the ▲▼ arrows, swap a player with ⇄ (substitutions), or remove with ×.'));
-    body.appendChild(gp('To log a pitch: tap the spot on the strike zone where it was located, then choose the pitch type and the result (ball, strike, foul, in play, hit, out…). The count, outs, innings, and baserunners all update automatically. On an extra-base hit with runners on, it asks how many scored.'));
+    body.appendChild(gp('To log a pitch: tap the spot on the strike zone where it was located, then the pitch type. For a Ball/Strike/Foul/HBP, one tap logs it. If the ball is put in play, tap everything that applies (e.g. Hard Ground Ball + Single) and tap Save — the hit or out sets the score, and the contact type is saved as scouting detail. The count, outs, innings, and baserunners all update automatically. On an extra-base hit with runners on, it asks how many scored.'));
     body.appendChild(gp('Made a mistake? Tap “Undo last,” or tap the × on any single pitch in the log to remove just that one. When the game’s over, tap “End Game” — the results save to that pitcher’s card.'));
-    body.appendChild(gExample('Khloe throws a fastball low-and-away for a called strike: tap that outside-low zone → Fastball → Called Strike. The count jumps to 0-1 by itself.'));
+    body.appendChild(gExample('Khloe throws an FB low-and-away for a called strike: tap that outside-low zone → FB → Called Strike. The count jumps to 0-1 by itself.'));
     body.appendChild(gHelps('Every pitch you tap builds that pitcher’s heat maps, tendencies, and season line — so a season of tapping turns into a real scouting report.'));
   }));
 

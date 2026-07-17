@@ -863,3 +863,9 @@ button { font-family: inherit; }
 /* SVG glyphs used as tab / drawer icons (e.g. the bat) */
 .tab-icon svg { width: 20px; height: 20px; display: block; }
 .di-icon svg { width: 20px; height: 20px; display: block; }
+
+/* Multi-select "if put in play" options + chart contact detail */
+.opt.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.opt.opt-outcome { border-color: var(--accent-2); }
+.opt.opt-outcome.selected { border-color: var(--accent); }
+.chart-ab-detail { font-size: 12px; color: var(--accent-2); font-weight: 700; margin-top: 8px; }
