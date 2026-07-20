@@ -1,7 +1,7 @@
 /* Service worker: network-first for the app shell so updates always reach the
    device when online, with a cache fallback so it still works at the field with
    no signal. */
-const CACHE = 'chs-scout-v33';
+const CACHE = 'chs-scout-v34';
 const ASSETS = [
   './',
   './index.html',

@@ -1985,6 +1985,45 @@ function formatIP(outs) {
   return `${Math.floor(outs / 3)}.${outs % 3}`;
 }
 
+// Batted-ball profile from tagged in-play pitches. Each tagged ball is put in
+// ONE primary bucket so the rates sum to 100%.
+function battedBallProfile(pitches) {
+  let gb = 0, ld = 0, pop = 0, bunt = 0, hardGb = 0, weakGb = 0;
+  (pitches || []).forEach(pt => {
+    const c = pt.contact;
+    if (!c || !c.length) return;
+    if (c.includes('Line Drive')) ld++;
+    else if (c.includes('Hard Ground Ball') || c.includes('Weak Ground Ball')) {
+      gb++;
+      if (c.includes('Hard Ground Ball')) hardGb++; else weakGb++;
+    }
+    else if (c.includes('Pop Up')) pop++;
+    else if (c.includes('Bunt')) bunt++;
+  });
+  const tagged = gb + ld + pop + bunt;
+  return { tagged, gb, ld, pop, bunt, hardGb, weakGb, pct: n => tagged ? Math.round((n / tagged) * 100) : 0 };
+}
+
+// A "Batted Ball" card (GB/LD/Pop/Bunt rates + counts). Returns null if no
+// batted ball has been tagged for these pitches.
+function battedBallCard(pitches) {
+  const bb = battedBallProfile(pitches);
+  if (!bb.tagged) return null;
+  const counts = [
+    `GB ${bb.gb} (${bb.hardGb} hard / ${bb.weakGb} weak)`,
+    `LD ${bb.ld}`, `Pop ${bb.pop}`, `Bunt ${bb.bunt}`
+  ].join(' · ');
+  return el('div', { class: 'card' }, [
+    el('h3', { text: 'Batted Ball', style: { margin: '0 0 8px' } }),
+    el('div', { class: 'line-grid' }, [
+      lineStat('GB%', bb.pct(bb.gb) + '%'), lineStat('LD%', bb.pct(bb.ld) + '%'),
+      lineStat('Pop%', bb.pct(bb.pop) + '%'), lineStat('Bunt%', bb.pct(bb.bunt) + '%')
+    ]),
+    el('div', { class: 'muted', style: { fontSize: '12px', marginTop: '8px' },
+      text: `${bb.tagged} batted ball${bb.tagged === 1 ? '' : 's'} tagged · ${counts}` })
+  ]);
+}
+
 // Aggregate a pitching line from a set of pitches (one game or many).
 function pitchingLine(pitches) {
   let k = 0, bb = 0, h = 0, hbp = 0, ipOuts = 0, bf = 0;
@@ -2108,6 +2147,9 @@ function renderPitcherProfile(p) {
       lineStat('Strike%', tot.strikePct + '%'), lineStat('Whiff%', tot.whiffPct + '%'), lineStat('BF', tot.bf)
     ])
   ]));
+
+  const bbCard = battedBallCard(allPitches);
+  if (bbCard) report.appendChild(bbCard);
 
   // Per-game results log.
   const log = el('div', { class: 'card' }, [el('h3', { text: 'Game Log', style: { margin: '0 0 10px' } })]);
@@ -2801,6 +2843,8 @@ function renderScoutingStats() {
   wrap.appendChild(statsCountTendencies(pitches));
   wrap.appendChild(statsSummary(pitches));
   wrap.appendChild(statsPitchMix(pitches));
+  const bbCard = battedBallCard(pitches);
+  if (bbCard) wrap.appendChild(bbCard);
   return wrap;
 }
 
